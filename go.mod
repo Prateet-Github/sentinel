@@ -1,3 +1,3 @@
-module github.com/Prateet-Github/rate-limiter
+module github.com/Prateet-Github/sentinel
 
 go 1.25.0

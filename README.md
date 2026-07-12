@@ -1,3 +1,3 @@
-# Rate Limiter
+# Sentinel
 
-- A rate limiter written in Golang.
+- A distributed API gateway written in Go.
