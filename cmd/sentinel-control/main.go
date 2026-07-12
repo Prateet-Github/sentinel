@@ -3,5 +3,5 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println("Sentinel Data Plane")
+	fmt.Println("Sentinel Control Plane")
 }
