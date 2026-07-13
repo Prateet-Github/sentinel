@@ -1,0 +1,11 @@
+server:
+  port: 8080
+
+backends:
+  - name: users-service
+    url: http://localhost:9000
+
+routes:
+  - method: GET
+    path: /users
+    backend: users-service
