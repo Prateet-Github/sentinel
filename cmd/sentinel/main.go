@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Prateet-Github/sentinel/internal/config"
+	"github.com/Prateet-Github/sentinel/internal/dataplane"
 	"github.com/Prateet-Github/sentinel/internal/proxy"
 )
 
@@ -19,7 +20,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("Sentinel listening on :%d", cfg.Server.Port)
+	dataplane := dataplane.New(p)
 
-	log.Fatal(http.ListenAndServe(":8080", p))
+	log.Fatal(http.ListenAndServe(":8080", dataplane))
 }
