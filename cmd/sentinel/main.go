@@ -18,14 +18,19 @@ func main() {
 
 	r := router.NewHashMapRouter(cfg)
 
-	p, err := proxy.New(cfg.Backends[0].URL)
+	// p, err := proxy.New(cfg.Backends[0].URL)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	registry, err := proxy.NewRegistry(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	dp := dataplane.New(
 		r,
-		p,
+		registry,
 		cfg,
 	)
 

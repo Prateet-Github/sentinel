@@ -4,24 +4,25 @@ import (
 	"net/http"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
+	"github.com/Prateet-Github/sentinel/internal/proxy"
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
 type Dataplane struct {
-	router router.Router
-	config *core.Config
-	proxy  http.Handler
+	router   router.Router
+	config   *core.Config
+	registry *proxy.Registry
 }
 
 func New(
 	router router.Router,
-	proxy http.Handler,
+	registry *proxy.Registry,
 	config *core.Config,
 ) *Dataplane {
 	return &Dataplane{
-		router: router,
-		proxy:  proxy,
-		config: config,
+		router:   router,
+		registry: registry,
+		config:   config,
 	}
 }
 
@@ -32,7 +33,11 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = route // TODO: will use it later for logging and metrics
+	backendProxy, ok := p.registry.Get(route.Backend)
+	if !ok {
+		http.Error(w, "backend not found", http.StatusBadGateway)
+		return
+	}
 
-	p.proxy.ServeHTTP(w, r)
+	backendProxy.ServeHTTP(w, r)
 }
