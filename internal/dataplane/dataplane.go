@@ -10,7 +10,6 @@ import (
 
 type Dataplane struct {
 	router   router.Router
-	config   *core.Config
 	registry *proxy.Registry
 }
 
@@ -22,7 +21,6 @@ func New(
 	return &Dataplane{
 		router:   router,
 		registry: registry,
-		config:   config,
 	}
 }
 
