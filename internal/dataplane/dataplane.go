@@ -27,17 +27,51 @@ func New(
 }
 
 func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	route, ok := p.matchRoute(w, r)
+	if !ok {
+		return
+	}
+
+	proxy, ok := p.resolveBackend(w, route)
+	if !ok {
+		return
+	}
+
+	p.forward(proxy, w, r)
+}
+
+func (p *Dataplane) matchRoute(
+	w http.ResponseWriter,
+	r *http.Request,
+) (*core.Route, bool) {
+
 	route, ok := p.router.Match(r.Method, r.URL.Path)
 	if !ok {
 		http.NotFound(w, r)
-		return
+		return nil, false
 	}
 
-	backendProxy, ok := p.registry.Get(route.Backend)
+	return route, true
+}
+
+func (p *Dataplane) resolveBackend(
+	w http.ResponseWriter,
+	route *core.Route,
+) (http.Handler, bool) {
+
+	proxy, ok := p.registry.Get(route.Backend)
 	if !ok {
 		http.Error(w, "backend not found", http.StatusBadGateway)
-		return
+		return nil, false
 	}
 
-	backendProxy.ServeHTTP(w, r)
+	return proxy, true
+}
+
+func (p *Dataplane) forward(
+	proxy http.Handler,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	proxy.ServeHTTP(w, r)
 }
