@@ -14,15 +14,15 @@ import (
 func main() {
 
 	go func() {
-	log.Println(http.ListenAndServe("localhost:6060", nil))
-}()
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	r := router.NewHashMapRouter(cfg)
+	r := router.NewTrieRouter(cfg)
 
 	// p, err := proxy.New(cfg.Backends[0].URL)
 	// if err != nil {
