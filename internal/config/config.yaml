@@ -9,3 +9,35 @@ routes:
   - method: GET
     path: /users
     backend: users-service
+
+  - method: GET
+    path: /users/profile
+    backend: users-service
+
+  - method: GET
+    path: /users/settings
+    backend: users-service
+
+  - method: GET
+    path: /users/orders
+    backend: users-service
+
+  - method: GET
+    path: /orders
+    backend: users-service
+
+  - method: GET
+    path: /orders/history
+    backend: users-service
+
+  - method: GET
+    path: /products
+    backend: users-service
+
+  - method: GET
+    path: /products/latest
+    backend: users-service
+
+  - method: GET
+    path: /health
+    backend: users-service
