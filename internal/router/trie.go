@@ -31,21 +31,44 @@ func NewTrieRouter(cfg *core.Config) *TrieRouter {
 func (r *TrieRouter) Match(method, path string) (*core.Route, bool) {
 	node := r.root
 
-	segments := strings.Split(strings.Trim(path, "/"), "/")
+	if len(path) > 0 && path[0] == '/' {
+		path = path[1:]
+	}
 
-	for _, segment := range segments {
+	if len(path) > 0 && path[len(path)-1] == '/' {
+		path = path[:len(path)-1]
+	}
+
+	if path == "" {
+		if node.route != nil && node.route.Method == method {
+			return node.route, true
+		}
+		return nil, false
+	}
+
+	start := 0
+	for i := 0; i < len(path); i++ {
+		if path[i] == '/' {
+			if i > start {
+				segment := path[start:i]
+				node = findChild(node, segment)
+				if node == nil {
+					return nil, false
+				}
+			}
+			start = i + 1
+		}
+	}
+
+	if start < len(path) {
+		segment := path[start:]
 		node = findChild(node, segment)
-
 		if node == nil {
 			return nil, false
 		}
 	}
 
-	if node.route == nil {
-		return nil, false
-	}
-
-	if node.route.Method != method {
+	if node.route == nil || node.route.Method != method {
 		return nil, false
 	}
 
