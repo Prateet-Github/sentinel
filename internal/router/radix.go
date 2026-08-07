@@ -20,11 +20,9 @@ func NewRadixRouter(cfg *core.Config) *RadixRouter {
 	r := &RadixRouter{
 		root: &RadixNode{},
 	}
-
 	for _, route := range cfg.Routes {
 		r.insert(route)
 	}
-
 	return r
 }
 
@@ -34,39 +32,19 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 
 func (r *RadixRouter) insert(route core.Route) {
 	path := strings.Trim(route.Path, "/")
-	r.insertNode(r.root, path, &route)
-}
 
-func longestCommonPrefix(a, b string) int {
-	n := len(a)
-	if len(b) < n {
-		n = len(b)
+	if path == "" {
+		r.root.route = &route
+		return
 	}
 
-	i := 0
-	for i < n && a[i] == b[i] {
-		i++
-	}
-
-	return i
+	segments := strings.Split(path, "/")
+	r.insertNode(r.root, segments, &route)
 }
 
 func (r *RadixRouter) insertNode(
 	node *RadixNode,
-	path string,
+	segments []string,
 	route *core.Route,
 ) {
-	// TODO: implement radix tree insertion logic here
-
-	for _, child := range node.children {
-		if longestCommonPrefix(child.prefix, path) > 0 {
-			// will handle this next
-			return
-		}
-	}
-
-	node.children = append(node.children, &RadixNode{
-		prefix: path,
-		route:  route,
-	})
 }
