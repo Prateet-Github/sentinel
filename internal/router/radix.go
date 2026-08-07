@@ -38,29 +38,50 @@ func (r *RadixRouter) insert(route core.Route) {
 		return
 	}
 
-	segments := strings.Split(path, "/")
-	r.insertNode(r.root, segments, &route)
+	r.insertNode(r.root, path, &route)
 }
 
 func (r *RadixRouter) insertNode(
 	node *RadixNode,
-	segments []string,
+	path string,
 	route *core.Route,
 ) {
-	if len(segments) == 0 {
+	if path == "" {
 		node.route = route
 		return
 	}
 
-	path := strings.Join(segments, "/")
-
 	for _, child := range node.children {
 		common := longestCommonPrefix(child.prefix, path)
 
-		if common > 0 {
-			// TODO: splitting & descending logic for partial matches
+		// Case 1: No common prefix
+		if common == 0 {
+			continue
+		}
+
+		// Case 2: Exact match
+		if common == len(child.prefix) &&
+			common == len(path) {
+
+			child.route = route
 			return
 		}
+
+		// Case 3: Child prefix is a prefix of the path
+
+		if common == len(child.prefix) {
+			remaining := path[common:]
+
+			if len(remaining) > 0 && remaining[0] == '/' {
+				remaining = remaining[1:]
+			}
+
+			r.insertNode(child, remaining, route)
+			return
+		}
+
+		// Case 4: Partial overlap
+
 	}
 
 	node.children = append(node.children, &RadixNode{
