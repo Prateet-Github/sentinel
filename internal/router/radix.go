@@ -47,4 +47,38 @@ func (r *RadixRouter) insertNode(
 	segments []string,
 	route *core.Route,
 ) {
+	if len(segments) == 0 {
+		node.route = route
+		return
+	}
+
+	path := strings.Join(segments, "/")
+
+	for _, child := range node.children {
+		common := longestCommonPrefix(child.prefix, path)
+
+		if common > 0 {
+			// TODO: splitting & descending logic for partial matches
+			return
+		}
+	}
+
+	node.children = append(node.children, &RadixNode{
+		prefix: path,
+		route:  route,
+	})
+}
+
+func longestCommonPrefix(a, b string) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+
 }
