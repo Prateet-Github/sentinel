@@ -59,31 +59,53 @@ func (r *RadixRouter) insertNode(
 			continue
 		}
 
-		// Case 2: Exact match
-		if common == len(child.prefix) &&
-			common == len(path) {
+		// Case 2: Partial overlap -> split node
+		if common < len(child.prefix) {
 
+			oldChild := &RadixNode{
+				prefix:   child.prefix[common:],
+				children: child.children,
+				route:    child.route,
+			}
+
+			child.prefix = child.prefix[:common]
+			child.children = []*RadixNode{oldChild}
+			child.route = nil
+
+			// New route ends at the shared prefix
+			if common == len(path) {
+				child.route = route
+				return
+			}
+
+			// Remaining part of the new route becomes a sibling
+			newChild := &RadixNode{
+				prefix: path[common:],
+				route:  route,
+			}
+
+			child.children = append(child.children, newChild)
+			return
+		}
+
+		// Case 3: Exact match
+		if common == len(child.prefix) && common == len(path) {
 			child.route = route
 			return
 		}
 
-		// Case 3: Child prefix is a prefix of the path
+		// Case 4: Child prefix is a prefix of the path
+		remaining := path[common:]
 
-		if common == len(child.prefix) {
-			remaining := path[common:]
-
-			if len(remaining) > 0 && remaining[0] == '/' {
-				remaining = remaining[1:]
-			}
-
-			r.insertNode(child, remaining, route)
-			return
+		if len(remaining) > 0 && remaining[0] == '/' {
+			remaining = remaining[1:]
 		}
 
-		// Case 4: Partial overlap
-
+		r.insertNode(child, remaining, route)
+		return
 	}
 
+	// No matching child.
 	node.children = append(node.children, &RadixNode{
 		prefix: path,
 		route:  route,
