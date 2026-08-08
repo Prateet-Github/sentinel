@@ -40,6 +40,25 @@ func TestRadixInsert(t *testing.T) {
 				{Method: "GET", Path: "/users/profile/avatar"},
 			},
 		},
+		{
+			name: "parameter route",
+			routes: []core.Route{
+				{Method: "GET", Path: "/users/:id"},
+			},
+		},
+		{
+			name: "static and parameter route",
+			routes: []core.Route{
+				{Method: "GET", Path: "/users/profile"},
+				{Method: "GET", Path: "/users/:id"},
+			},
+		},
+		{
+			name: "nested parameter route",
+			routes: []core.Route{
+				{Method: "GET", Path: "/users/:id/profile"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -77,6 +96,11 @@ func dump(node *RadixNode, depth int) {
 
 	for _, child := range node.children {
 		dump(child, depth+1)
+	}
+
+	if node.paramChild != nil {
+		fmt.Printf("%s:paramChild\n", strings.Repeat("  ", depth+1))
+		dump(node.paramChild, depth+2)
 	}
 }
 
