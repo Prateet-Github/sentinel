@@ -22,7 +22,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	r := router.NewTrieRouter(cfg)
+	r := router.NewRadixRouter(cfg)
 
 	// p, err := proxy.New(cfg.Backends[0].URL)
 	// if err != nil {

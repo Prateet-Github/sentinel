@@ -259,3 +259,67 @@ func TestRadixMatch(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkRadixMatchStatic(b *testing.B) {
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{Method: "GET", Path: "/users"},
+			{Method: "GET", Path: "/users/profile"},
+			{Method: "GET", Path: "/users/profile/avatar"},
+			{Method: "GET", Path: "/users/settings"},
+			{Method: "GET", Path: "/orders"},
+			{Method: "GET", Path: "/orders/history"},
+			{Method: "GET", Path: "/products"},
+			{Method: "GET", Path: "/products/latest"},
+		},
+	}
+
+	r := NewRadixRouter(cfg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		r.Match("GET", "/users/profile/avatar")
+	}
+}
+
+func BenchmarkRadixMatchParameter(b *testing.B) {
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{Method: "GET", Path: "/users/:id"},
+			{Method: "GET", Path: "/users/:id/profile"},
+			{Method: "GET", Path: "/users/:id/settings"},
+		},
+	}
+
+	r := NewRadixRouter(cfg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		r.Match("GET", "/users/12345/profile")
+	}
+}
+
+func BenchmarkRadixMatchMiss(b *testing.B) {
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{Method: "GET", Path: "/users"},
+			{Method: "GET", Path: "/users/profile"},
+			{Method: "GET", Path: "/users/settings"},
+			{Method: "GET", Path: "/orders"},
+			{Method: "GET", Path: "/products"},
+		},
+	}
+
+	r := NewRadixRouter(cfg)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		r.Match("GET", "/does-not-exist")
+	}
+}
