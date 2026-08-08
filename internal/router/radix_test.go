@@ -63,7 +63,6 @@ func TestRadixInsert(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			cfg := &core.Config{
 				Routes: tt.routes,
 			}
@@ -89,7 +88,8 @@ func dump(node *RadixNode, depth int) {
 		return
 	}
 
-	fmt.Printf("%s%s\n",
+	fmt.Printf(
+		"%s%s\n",
 		strings.Repeat("  ", depth),
 		node.prefix,
 	)
@@ -99,7 +99,11 @@ func dump(node *RadixNode, depth int) {
 	}
 
 	if node.paramChild != nil {
-		fmt.Printf("%s:paramChild\n", strings.Repeat("  ", depth+1))
+		fmt.Printf(
+			"%s:paramChild\n",
+			strings.Repeat("  ", depth+1),
+		)
+
 		dump(node.paramChild, depth+2)
 	}
 }
@@ -111,6 +115,11 @@ func TestRadixMatch(t *testing.T) {
 			{Method: "GET", Path: "/users/profile"},
 			{Method: "GET", Path: "/users/profile/avatar"},
 			{Method: "GET", Path: "/users/settings"},
+
+			// Parameterized routes.
+			{Method: "GET", Path: "/users/:id"},
+			{Method: "GET", Path: "/users/:id/profile"},
+
 			{Method: "GET", Path: "/orders"},
 		},
 	}
@@ -166,10 +175,10 @@ func TestRadixMatch(t *testing.T) {
 			want:   true,
 		},
 		{
-			name:   "partial path",
+			name:   "nested parameter route with string",
 			method: "GET",
-			path:   "/users/pro",
-			want:   false,
+			path:   "/users/pro/profile",
+			want:   true,
 		},
 		{
 			name:   "extra path",
@@ -182,6 +191,55 @@ func TestRadixMatch(t *testing.T) {
 			method: "GET",
 			path:   "/users/profile/",
 			want:   true,
+		},
+
+		// Parameterized routes.
+		{
+			name:   "parameter route",
+			method: "GET",
+			path:   "/users/42",
+			want:   true,
+		},
+		{
+			name:   "parameter route string",
+			method: "GET",
+			path:   "/users/abc",
+			want:   true,
+		},
+		{
+			name:   "nested parameter route",
+			method: "GET",
+			path:   "/users/42/profile",
+			want:   true,
+		},
+		{
+			name:   "nested parameter route string",
+			method: "GET",
+			path:   "/users/abc/profile",
+			want:   true,
+		},
+
+		// static route must take priority over :id
+		{
+			name:   "static beats parameter",
+			method: "GET",
+			path:   "/users/profile",
+			want:   true,
+		},
+
+		// /users is a valid static route
+		{
+			name:   "parameter route missing segment",
+			method: "GET",
+			path:   "/users",
+			want:   true,
+		},
+
+		{
+			name:   "parameter extra path",
+			method: "GET",
+			path:   "/users/42/unknown",
+			want:   false,
 		},
 	}
 

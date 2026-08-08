@@ -36,17 +36,35 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 	for len(path) > 0 {
 		var matched *RadixNode
 
-		// Static routes always get priority.
+		// Try static routes first.
 		for _, child := range node.children {
 			common := longestCommonPrefix(child.prefix, path)
 
-			if common == len(child.prefix) {
-				matched = child
-				break
+			// Entire compressed prefix must match.
+			if common != len(child.prefix) {
+				continue
 			}
+
+			// If path continues, the next character must be
+			// a segment separator. This prevents:
+			//
+			// /users/pro
+			// from matching /users/profile
+			//
+			// and allows:
+			//
+			// /users/profile/avatar
+			// to continue matching.
+			if len(path) > len(child.prefix) &&
+				path[len(child.prefix)] != '/' {
+				continue
+			}
+
+			matched = child
+			break
 		}
 
-		// If no static route matches, try parameterized route
+		// Static routes always have priority over parameters.
 		if matched == nil && node.paramChild != nil {
 			matched = node.paramChild
 		}
@@ -55,7 +73,7 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 			return nil, false
 		}
 
-		// Parameterized route consumes exactly one path segment
+		// Parameter route: consume exactly one path segment.
 		if matched == node.paramChild {
 			slash := strings.IndexByte(path, '/')
 
@@ -69,11 +87,10 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 			continue
 		}
 
-		// Static compressed prefix
+		// Static compressed node.
 		path = path[len(matched.prefix):]
 
-		// If more path remains, the next character must be
-		// a segment separator
+		// Consume separator between segments.
 		if len(path) > 0 {
 			if path[0] != '/' {
 				return nil, false
