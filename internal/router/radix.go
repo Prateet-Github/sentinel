@@ -7,9 +7,10 @@ import (
 )
 
 type RadixNode struct {
-	prefix   string
-	children []*RadixNode
-	route    *core.Route
+	prefix     string
+	children   []*RadixNode
+	paramChild *RadixNode // for parametersied routes
+	route      *core.Route
 }
 
 type RadixRouter struct {
@@ -83,6 +84,25 @@ func (r *RadixRouter) insert(route core.Route) {
 func (r *RadixRouter) insertNode(node *RadixNode, path string, route *core.Route) {
 	if path == "" {
 		node.route = route
+		return
+	}
+
+	// Handle parameterized routes
+	segments := strings.SplitN(path, "/", 2)
+
+	if strings.HasPrefix(segments[0], ":") {
+		if node.paramChild == nil {
+			node.paramChild = &RadixNode{
+				prefix: segments[0],
+			}
+		}
+
+		if len(segments) == 1 {
+			node.paramChild.route = route
+			return
+		}
+
+		r.insertNode(node.paramChild, segments[1], route)
 		return
 	}
 
