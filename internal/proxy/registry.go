@@ -28,6 +28,14 @@ func NewRegistry(cfg *core.Config) (*Registry, error) {
 	return r, nil
 }
 
+func NewRegistryFromHandlers(
+	proxies map[string]http.Handler,
+) *Registry {
+	return &Registry{
+		proxies: proxies,
+	}
+}
+
 func (r *Registry) Get(name string) (http.Handler, bool) {
 	p, ok := r.proxies[name]
 	return p, ok

@@ -33,6 +33,8 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r = r.WithContext(router.WithParams(r.Context(), params)) // after successful route match, add params to request context
+
 	proxy, ok := p.resolveBackend(w, route)
 	if !ok {
 		return
