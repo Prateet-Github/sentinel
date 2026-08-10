@@ -17,17 +17,12 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	cfg, err := config.Load()
+	cfg, err := config.Load("config.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	r := router.NewRadixRouter(cfg)
-
-	// p, err := proxy.New(cfg.Backends[0].URL)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
 
 	registry, err := proxy.NewRegistry(cfg)
 	if err != nil {

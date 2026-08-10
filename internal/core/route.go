@@ -1,7 +1,7 @@
 package core
 
 type Route struct {
-	Method  string
-	Path    string
-	Backend string
+	Method  string `yaml:"method"`
+	Path    string `yaml:"path"`
+	Backend string `yaml:"backend"`
 }

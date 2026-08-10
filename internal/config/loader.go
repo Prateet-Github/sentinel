@@ -1,25 +1,23 @@
 package config
 
-import "github.com/Prateet-Github/sentinel/internal/core"
+import (
+	"os"
 
-func Load() (*core.Config, error) {
-	// will make a yaml file for this later when the parser is done
-	return &core.Config{
-		Server: core.Server{
-			Port: 8080,
-		},
-		Backends: []core.Backend{
-			{
-				Name: "users-service",
-				URL:  "http://localhost:9000",
-			},
-		},
-		Routes: []core.Route{
-			{
-				Method:  "GET",
-				Path:    "/users",
-				Backend: "users-service",
-			},
-		},
-	}, nil
+	"github.com/Prateet-Github/sentinel/internal/core"
+	"gopkg.in/yaml.v3"
+)
+
+func Load(path string) (*core.Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg core.Config
+
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
 }

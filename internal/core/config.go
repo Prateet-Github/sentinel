@@ -1,11 +1,11 @@
 package core
 
 type Server struct {
-	Port int
+	Port int `yaml:"port"`
 }
 
 type Config struct {
-	Server   Server
-	Routes   []Route
-	Backends []Backend
+	Server   Server    `yaml:"server"`
+	Routes   []Route   `yaml:"routes"`
+	Backends []Backend `yaml:"backends"`
 }
