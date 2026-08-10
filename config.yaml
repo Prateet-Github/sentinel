@@ -41,3 +41,7 @@ routes:
   - method: GET
     path: /health
     backend: users-service
+
+  - method: GET
+    path: /users/:id
+    backend: users-service 
