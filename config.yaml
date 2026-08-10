@@ -45,3 +45,7 @@ routes:
   - method: GET
     path: /users/:id
     backend: users-service 
+
+  - method: GET
+    path: /files/*path
+    backend: users-service  

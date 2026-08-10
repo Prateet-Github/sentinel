@@ -98,6 +98,15 @@ func dump(node *RadixNode, depth int) {
 		dump(child, depth+1)
 	}
 
+	if node.wildcardChild != nil {
+		fmt.Printf(
+			"%s:wildcardChild\n",
+			strings.Repeat("  ", depth+1),
+		)
+
+		dump(node.wildcardChild, depth+2)
+	}
+
 	if node.paramChild != nil {
 		fmt.Printf(
 			"%s:paramChild\n",
@@ -311,6 +320,7 @@ func BenchmarkRadixMatchMiss(b *testing.B) {
 			{Method: "GET", Path: "/users/settings"},
 			{Method: "GET", Path: "/orders"},
 			{Method: "GET", Path: "/products"},
+			{Method: "GET", Path: "/files/*path"},
 		},
 	}
 
@@ -374,6 +384,54 @@ func TestRadixParams(t *testing.T) {
 				t.Fatalf(
 					"param %q = %q, want %q",
 					tt.param,
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func TestRadixWildcard(t *testing.T) {
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{Method: "GET", Path: "/files/*path"},
+		},
+	}
+
+	r := NewRadixRouter(cfg)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "single file",
+			path: "/files/image.png",
+			want: "image.png",
+		},
+		{
+			name: "nested path",
+			path: "/files/images/2026/avatar.png",
+			want: "images/2026/avatar.png",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var params Params
+
+			_, ok := r.Match("GET", tt.path, &params)
+
+			if !ok {
+				t.Fatal("expected route to match")
+			}
+
+			if got := params.Get("path"); got != tt.want {
+				t.Fatalf(
+					"param %q = %q, want %q",
+					"path",
 					got,
 					tt.want,
 				)

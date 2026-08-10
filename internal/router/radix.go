@@ -7,10 +7,11 @@ import (
 )
 
 type RadixNode struct {
-	prefix     string
-	children   []*RadixNode
-	paramChild *RadixNode // for parameterized routes
-	route      *core.Route
+	prefix        string
+	children      []*RadixNode
+	paramChild    *RadixNode // for parameterized routes
+	wildcardChild *RadixNode // for wildcard routes
+	route         *core.Route
 }
 
 type RadixRouter struct {
@@ -67,11 +68,35 @@ func (r *RadixRouter) Match(method, path string, params *Params) (*core.Route, b
 			matched = node.paramChild
 		}
 
+		// 3. Fall back to wildcard route.
+		if matched == nil && node.wildcardChild != nil {
+			matched = node.wildcardChild
+		}
+
 		if matched == nil {
 			return nil, false
 		}
 
-		// 3. Parameter route.
+		// 4. Wildcard route.
+		if matched == node.wildcardChild {
+			name := strings.TrimPrefix(matched.prefix, "*")
+
+			if params != nil {
+				*params = append(
+					*params,
+					Param{
+						Key:   name,
+						Value: path,
+					},
+				)
+			}
+
+			path = ""
+			node = matched
+			continue
+		}
+
+		// 5. Parameter route.
 		if matched == node.paramChild {
 			slash := strings.IndexByte(path, '/')
 
@@ -96,7 +121,7 @@ func (r *RadixRouter) Match(method, path string, params *Params) (*core.Route, b
 			continue
 		}
 
-		// 4. Static compressed route.
+		// 6. Static compressed route.
 		path = path[len(matched.prefix):]
 
 		if len(path) > 0 {
@@ -108,7 +133,7 @@ func (r *RadixRouter) Match(method, path string, params *Params) (*core.Route, b
 		node = matched
 	}
 
-	// 5. Final route validation.
+	// 7. Final route validation.
 	if node.route == nil || node.route.Method != method {
 		return nil, false
 	}
@@ -139,9 +164,22 @@ func (r *RadixRouter) insertNode(
 		return
 	}
 
-	// Parameterized route
+	// Split the path into the first segment and the remaining path.
 	segments := strings.SplitN(path, "/", 2)
 
+	// Wildcard route
+	if strings.HasPrefix(segments[0], "*") {
+		if node.wildcardChild == nil {
+			node.wildcardChild = &RadixNode{
+				prefix: segments[0],
+			}
+		}
+
+		node.wildcardChild.route = route
+		return
+	}
+
+	// Parameterized route
 	if strings.HasPrefix(segments[0], ":") {
 		if node.paramChild == nil {
 			node.paramChild = &RadixNode{
@@ -169,10 +207,11 @@ func (r *RadixRouter) insertNode(
 		// Partial overlap -> split existing node
 		if common < len(child.prefix) {
 			oldChild := &RadixNode{
-				prefix:     child.prefix[common:],
-				children:   child.children,
-				paramChild: child.paramChild,
-				route:      child.route,
+				prefix:        child.prefix[common:],
+				children:      child.children,
+				paramChild:    child.paramChild,
+				wildcardChild: child.wildcardChild,
+				route:         child.route,
 			}
 
 			child.prefix = child.prefix[:common]
