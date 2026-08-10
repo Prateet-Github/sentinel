@@ -25,7 +25,10 @@ func New(
 }
 
 func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	route, ok := p.matchRoute(w, r)
+
+	var params router.Params
+
+	route, ok := p.matchRoute(w, r, &params)
 	if !ok {
 		return
 	}
@@ -41,9 +44,10 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (p *Dataplane) matchRoute(
 	w http.ResponseWriter,
 	r *http.Request,
+	params *router.Params,
 ) (*core.Route, bool) {
 
-	route, ok := p.router.Match(r.Method, r.URL.Path, nil)
+	route, ok := p.router.Match(r.Method, r.URL.Path, params)
 	if !ok {
 		http.NotFound(w, r)
 		return nil, false
