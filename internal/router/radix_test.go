@@ -245,7 +245,7 @@ func TestRadixMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, ok := r.Match(tt.method, tt.path)
+			_, ok := r.Match(tt.method, tt.path, nil)
 
 			if ok != tt.want {
 				t.Fatalf(
@@ -280,7 +280,7 @@ func BenchmarkRadixMatchStatic(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		r.Match("GET", "/users/profile/avatar")
+		r.Match("GET", "/users/profile/avatar", nil)
 	}
 }
 
@@ -299,7 +299,7 @@ func BenchmarkRadixMatchParameter(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		r.Match("GET", "/users/12345/profile")
+		r.Match("GET", "/users/12345/profile", nil)
 	}
 }
 
@@ -320,6 +320,64 @@ func BenchmarkRadixMatchMiss(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		r.Match("GET", "/does-not-exist")
+		r.Match("GET", "/does-not-exist", nil)
+	}
+}
+
+func TestRadixParams(t *testing.T) {
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{Method: "GET", Path: "/users/:id"},
+			{Method: "GET", Path: "/users/:id/profile"},
+		},
+	}
+
+	r := NewRadixRouter(cfg)
+
+	tests := []struct {
+		name  string
+		path  string
+		param string
+		want  string
+	}{
+		{
+			name:  "numeric id",
+			path:  "/users/42",
+			param: "id",
+			want:  "42",
+		},
+		{
+			name:  "string id",
+			path:  "/users/abc",
+			param: "id",
+			want:  "abc",
+		},
+		{
+			name:  "nested parameter",
+			path:  "/users/42/profile",
+			param: "id",
+			want:  "42",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var params Params
+
+			_, ok := r.Match("GET", tt.path, &params)
+
+			if !ok {
+				t.Fatal("expected route to match")
+			}
+
+			if got := params.Get(tt.param); got != tt.want {
+				t.Fatalf(
+					"param %q = %q, want %q",
+					tt.param,
+					got,
+					tt.want,
+				)
+			}
+		})
 	}
 }

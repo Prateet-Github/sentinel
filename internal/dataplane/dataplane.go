@@ -43,7 +43,7 @@ func (p *Dataplane) matchRoute(
 	r *http.Request,
 ) (*core.Route, bool) {
 
-	route, ok := p.router.Match(r.Method, r.URL.Path)
+	route, ok := p.router.Match(r.Method, r.URL.Path, nil)
 	if !ok {
 		http.NotFound(w, r)
 		return nil, false

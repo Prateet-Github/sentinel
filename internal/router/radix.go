@@ -29,33 +29,25 @@ func NewRadixRouter(cfg *core.Config) *RadixRouter {
 	return r
 }
 
-func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
+func (r *RadixRouter) Match(method, path string, params *Params) (*core.Route, bool) {
 	path = strings.Trim(path, "/")
+
 	node := r.root
 
 	for len(path) > 0 {
 		var matched *RadixNode
 
-		// Try static routes first.
+		// 1. Static routes have priority.
 		for _, child := range node.children {
 			common := longestCommonPrefix(child.prefix, path)
 
-			// Entire compressed prefix must match.
 			if common != len(child.prefix) {
 				continue
 			}
 
-			// If path continues, the next character must be
-			// a segment separator. This prevents:
-			//
-			// /users/pro
-			// from matching /users/profile
-			//
-			// and allows:
-			//
-			// /users/profile/avatar
-			// to continue matching.
+			// The match must end on a segment boundary.
 			if len(path) > len(child.prefix) &&
+				child.prefix[len(child.prefix)-1] != '/' &&
 				path[len(child.prefix)] != '/' {
 				continue
 			}
@@ -64,7 +56,7 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 			break
 		}
 
-		// Static routes always have priority over parameters.
+		// 2. Fall back to parameter route.
 		if matched == nil && node.paramChild != nil {
 			matched = node.paramChild
 		}
@@ -73,35 +65,44 @@ func (r *RadixRouter) Match(method, path string) (*core.Route, bool) {
 			return nil, false
 		}
 
-		// Parameter route: consume exactly one path segment.
+		// 3. Parameter route.
 		if matched == node.paramChild {
 			slash := strings.IndexByte(path, '/')
 
+			var value string
+
 			if slash == -1 {
+				value = path
 				path = ""
 			} else {
+				value = path[:slash]
 				path = path[slash+1:]
+			}
+
+			name := strings.TrimPrefix(matched.prefix, ":")
+
+			// Append directly to caller's stack-backed slice (ZERO ALLOCATIONS)
+			if params != nil {
+				*params = append(*params, Param{Key: name, Value: value})
 			}
 
 			node = matched
 			continue
 		}
 
-		// Static compressed node.
+		// 4. Static compressed route.
 		path = path[len(matched.prefix):]
 
-		// Consume separator between segments.
 		if len(path) > 0 {
-			if path[0] != '/' {
-				return nil, false
+			if path[0] == '/' {
+				path = path[1:]
 			}
-
-			path = path[1:]
 		}
 
 		node = matched
 	}
 
+	// 5. Final route validation.
 	if node.route == nil || node.route.Method != method {
 		return nil, false
 	}
@@ -212,11 +213,25 @@ func (r *RadixRouter) insertNode(
 		return
 	}
 
-	// No matching static child
-	node.children = append(node.children, &RadixNode{
-		prefix: path,
-		route:  route,
-	})
+	// No matching static child.
+	//
+	// Only store the first path segment in the radix node.
+	// The remaining path is inserted recursively so that
+	// parameter segments can be represented by paramChild.
+	// segments := strings.SplitN(path, "/", 2)
+
+	child := &RadixNode{
+		prefix: segments[0],
+	}
+
+	node.children = append(node.children, child)
+
+	if len(segments) == 1 {
+		child.route = route
+		return
+	}
+
+	r.insertNode(child, segments[1], route)
 }
 
 func longestCommonPrefix(a, b string) int {
