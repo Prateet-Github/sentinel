@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
@@ -24,11 +23,11 @@ func NewRadixRouter(cfg *core.Config) *RadixRouter {
 	}
 
 	for _, route := range cfg.Routes {
-		fmt.Printf("[ROUTE] %s %s -> %s\n",
-			route.Method,
-			route.Path,
-			route.Backend,
-		)
+		// fmt.Printf("[ROUTE] %s %s -> %s\n",
+		// 	route.Method,
+		// 	route.Path,
+		// 	route.Backend,
+		// )
 
 		r.insert(route)
 	}
