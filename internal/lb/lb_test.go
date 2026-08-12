@@ -106,3 +106,67 @@ func BenchmarkBackendPoolNext(b *testing.B) {
 		_ = pool.Next()
 	}
 }
+
+func TestLoadBalancerGet(t *testing.T) {
+	users := NewBackendPool([]*core.Backend{
+		{URL: "http://localhost:9001"},
+		{URL: "http://localhost:9002"},
+	})
+
+	orders := NewBackendPool([]*core.Backend{
+		{URL: "http://localhost:9101"},
+	})
+
+	lb := NewLoadBalancer(map[string]*BackendPool{
+		"users-service":  users,
+		"orders-service": orders,
+	})
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{
+			name: "users-service",
+			want: true,
+		},
+		{
+			name: "orders-service",
+			want: true,
+		},
+		{
+			name: "unknown-service",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, ok := lb.Get(tt.name)
+
+			if ok != tt.want {
+				t.Fatalf("Get(%q) ok = %v, want %v", tt.name, ok, tt.want)
+			}
+
+			if tt.want && pool == nil {
+				t.Fatalf("Get(%q) returned nil pool", tt.name)
+			}
+		})
+	}
+}
+
+func TestLoadBalancerEmpty(t *testing.T) {
+	lb := NewLoadBalancer(
+		map[string]*BackendPool{},
+	)
+
+	pool, ok := lb.Get("users-service")
+
+	if ok {
+		t.Fatal("expected lookup to fail")
+	}
+
+	if pool != nil {
+		t.Fatal("expected nil pool")
+	}
+}

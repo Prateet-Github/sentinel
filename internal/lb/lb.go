@@ -25,3 +25,18 @@ func (p *BackendPool) Next() *core.Backend {
 	index := p.next.Add(1) - 1
 	return p.backends[index%uint64(len(p.backends))]
 }
+
+type LoadBalancer struct {
+	pools map[string]*BackendPool
+}
+
+func NewLoadBalancer(pools map[string]*BackendPool) *LoadBalancer {
+	return &LoadBalancer{
+		pools: pools,
+	}
+}
+
+func (lb *LoadBalancer) Get(name string) (*BackendPool, bool) {
+	pool, ok := lb.pools[name]
+	return pool, ok
+}
