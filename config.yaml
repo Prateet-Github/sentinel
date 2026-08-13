@@ -5,6 +5,12 @@ backends:
   - name: users-service
     url: http://127.0.0.1:9000
 
+  - name: users-service
+    url: http://127.0.0.1:9001
+
+  - name: users-service
+    url: http://127.0.0.1:9002   
+
 routes:
   - method: GET
     path: /users
