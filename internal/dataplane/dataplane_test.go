@@ -1,8 +1,10 @@
 package dataplane
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
@@ -214,6 +216,120 @@ func BenchmarkDataplaneMiss(b *testing.B) {
 
 		if ok {
 			b.Fatal("expected route miss")
+		}
+	}
+}
+
+func TestDataplaneLoadBalancing(t *testing.T) {
+	backends := []struct {
+		name     string
+		response string
+	}{
+		{
+			name:     "backend-1",
+			response: "backend-1",
+		},
+		{
+			name:     "backend-2",
+			response: "backend-2",
+		},
+		{
+			name:     "backend-3",
+			response: "backend-3",
+		},
+	}
+
+	servers := make([]*httptest.Server, 0, len(backends))
+
+	for _, backend := range backends {
+		response := backend.response
+
+		server := httptest.NewServer(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintln(w, response)
+			}),
+		)
+
+		servers = append(servers, server)
+	}
+
+	defer func() {
+		for _, server := range servers {
+			server.Close()
+		}
+	}()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users-service",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	poolBackends := make([]*core.Backend, 0, len(servers))
+
+	for i, server := range servers {
+		poolBackends = append(poolBackends, &core.Backend{
+			Name: "users-service",
+			URL:  server.URL,
+		})
+
+		_ = i
+	}
+
+	pool := lb.NewBackendPool(poolBackends)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users-service": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	want := []string{
+		"backend-1",
+		"backend-2",
+		"backend-3",
+		"backend-1",
+		"backend-2",
+		"backend-3",
+	}
+
+	for i, expected := range want {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf(
+				"request %d: status = %d, want %d",
+				i,
+				rec.Code,
+				http.StatusOK,
+			)
+		}
+
+		got := strings.TrimSpace(rec.Body.String())
+
+		if got != expected {
+			t.Fatalf(
+				"request %d: response = %q, want %q",
+				i,
+				got,
+				expected,
+			)
 		}
 	}
 }
