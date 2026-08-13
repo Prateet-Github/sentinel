@@ -7,7 +7,7 @@ import (
 
 	"github.com/Prateet-Github/sentinel/internal/config"
 	"github.com/Prateet-Github/sentinel/internal/dataplane"
-	"github.com/Prateet-Github/sentinel/internal/proxy"
+	"github.com/Prateet-Github/sentinel/internal/lb"
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
@@ -24,14 +24,11 @@ func main() {
 
 	r := router.NewRadixRouter(cfg)
 
-	registry, err := proxy.NewRegistry(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
+	loadBalancer := lb.BuildLoadBalancer(cfg)
 
 	dp := dataplane.New(
 		r,
-		registry,
+		loadBalancer,
 		cfg,
 	)
 

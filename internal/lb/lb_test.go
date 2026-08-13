@@ -170,3 +170,40 @@ func TestLoadBalancerEmpty(t *testing.T) {
 		t.Fatal("expected nil pool")
 	}
 }
+
+func TestBuildLoadBalancer(t *testing.T) {
+	cfg := &core.Config{
+		Backends: []core.Backend{
+			{Name: "users-service", URL: "http://127.0.0.1:9000"},
+			{Name: "users-service", URL: "http://127.0.0.1:9001"},
+			{Name: "users-service", URL: "http://127.0.0.1:9002"},
+			{Name: "orders-service", URL: "http://127.0.0.1:9100"},
+		},
+	}
+
+	lb := BuildLoadBalancer(cfg)
+
+	users, ok := lb.Get("users-service")
+	if !ok {
+		t.Fatal("users-service pool not found")
+	}
+
+	if len(users.backends) != 3 {
+		t.Fatalf(
+			"users-service backend count = %d, want 3",
+			len(users.backends),
+		)
+	}
+
+	orders, ok := lb.Get("orders-service")
+	if !ok {
+		t.Fatal("orders-service pool not found")
+	}
+
+	if len(orders.backends) != 1 {
+		t.Fatalf(
+			"orders-service backend count = %d, want 1",
+			len(orders.backends),
+		)
+	}
+}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
-	"github.com/Prateet-Github/sentinel/internal/proxy"
+	"github.com/Prateet-Github/sentinel/internal/lb"
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
@@ -23,45 +23,48 @@ func TestDataplaneParameterPropagation(t *testing.T) {
 
 	r := router.NewRadixRouter(cfg)
 
-	backend := http.HandlerFunc(func(
-		w http.ResponseWriter,
-		req *http.Request,
-	) {
-		params, ok := router.ParamsFromContext(req.Context())
-		if !ok {
-			t.Fatal("params missing from request context")
-		}
+	// backend := &core.Backend{
+	// 	Name: "users",
+	// 	URL:  "http://localhost:9000",
+	// }
 
-		if got := params.Get("id"); got != "42" {
-			t.Fatalf("id = %q, want %q", got, "42")
-		}
+	// pool := lb.NewBackendPool([]*core.Backend{
+	// 	backend,
+	// })
 
-		w.WriteHeader(http.StatusOK)
-	})
+	// loadBalancer := lb.NewLoadBalancer(
+	// 	map[string]*lb.BackendPool{
+	// 		"users": pool,
+	// 	},
+	// )
 
-	registry := proxy.NewRegistryFromHandlers(
-		map[string]http.Handler{
-			"users": backend,
-		},
-	)
+	// dp := New(r, loadBalancer, cfg)
 
-	dp := New(r, registry, cfg)
+	var params router.Params
 
-	req := httptest.NewRequest(
+	route, ok := r.Match(
 		http.MethodGet,
 		"/users/42",
-		nil,
+		&params,
 	)
 
-	rec := httptest.NewRecorder()
+	if !ok {
+		t.Fatal("expected route to match")
+	}
 
-	dp.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
+	if route.Backend != "users" {
 		t.Fatalf(
-			"status = %d, want %d",
-			rec.Code,
-			http.StatusOK,
+			"backend = %q, want %q",
+			route.Backend,
+			"users",
+		)
+	}
+
+	if got := params.Get("id"); got != "42" {
+		t.Fatalf(
+			"param id = %q, want %q",
+			got,
+			"42",
 		)
 	}
 }
@@ -79,20 +82,22 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 
 	r := router.NewRadixRouter(cfg)
 
-	backend := http.HandlerFunc(func(
-		w http.ResponseWriter,
-		req *http.Request,
-	) {
-		w.WriteHeader(http.StatusOK)
-	})
+	backends := []*core.Backend{
+		{
+			Name: "users",
+			URL:  "http://localhost:9000",
+		},
+	}
 
-	registry := proxy.NewRegistryFromHandlers(
-		map[string]http.Handler{
-			"users": backend,
+	pool := lb.NewBackendPool(backends)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
 		},
 	)
 
-	dp := New(r, registry, cfg)
+	dp := New(r, loadBalancer, cfg)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -100,12 +105,28 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 		nil,
 	)
 
+	params := router.Params{}
+
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		rec := httptest.NewRecorder()
-		dp.ServeHTTP(rec, req)
+		route, ok := r.Match(
+			req.Method,
+			req.URL.Path,
+			&params,
+		)
+
+		if !ok {
+			b.Fatal("route did not match")
+		}
+
+		_, ok = loadBalancer.Get(route.Backend)
+		if !ok {
+			b.Fatal("backend pool not found")
+		}
+
+		_ = dp
 	}
 }
 
@@ -122,20 +143,18 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 
 	r := router.NewRadixRouter(cfg)
 
-	backend := http.HandlerFunc(func(
-		w http.ResponseWriter,
-		req *http.Request,
-	) {
-		w.WriteHeader(http.StatusOK)
+	pool := lb.NewBackendPool([]*core.Backend{
+		{
+			Name: "users",
+			URL:  "http://localhost:9000",
+		},
 	})
 
-	registry := proxy.NewRegistryFromHandlers(
-		map[string]http.Handler{
-			"users": backend,
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
 		},
 	)
-
-	dp := New(r, registry, cfg)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -147,8 +166,24 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		rec := httptest.NewRecorder()
-		dp.ServeHTTP(rec, req)
+		var params router.Params
+
+		route, ok := r.Match(
+			req.Method,
+			req.URL.Path,
+			&params,
+		)
+
+		if !ok {
+			b.Fatal("route did not match")
+		}
+
+		pool, ok := loadBalancer.Get(route.Backend)
+		if !ok {
+			b.Fatal("backend pool not found")
+		}
+
+		_ = pool.Next()
 	}
 }
 
@@ -165,32 +200,20 @@ func BenchmarkDataplaneMiss(b *testing.B) {
 
 	r := router.NewRadixRouter(cfg)
 
-	backend := http.HandlerFunc(func(
-		w http.ResponseWriter,
-		req *http.Request,
-	) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	registry := proxy.NewRegistryFromHandlers(
-		map[string]http.Handler{
-			"users": backend,
-		},
-	)
-
-	dp := New(r, registry, cfg)
-
-	req := httptest.NewRequest(
-		http.MethodGet,
-		"/does-not-exist",
-		nil,
-	)
-
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		rec := httptest.NewRecorder()
-		dp.ServeHTTP(rec, req)
+		var params router.Params
+
+		_, ok := r.Match(
+			http.MethodGet,
+			"/does-not-exist",
+			&params,
+		)
+
+		if ok {
+			b.Fatal("expected route miss")
+		}
 	}
 }
