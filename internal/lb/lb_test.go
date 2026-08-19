@@ -207,3 +207,27 @@ func TestBuildLoadBalancer(t *testing.T) {
 		)
 	}
 }
+
+func TestBackendPoolHealth(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+		{Name: "backend-2", URL: "http://127.0.0.1:9002"},
+		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
+	}
+
+	pool := NewBackendPool(backends)
+
+	if got := pool.State(0); got != BackendHealthy {
+		t.Fatalf("backend-1 state = %v, want healthy", got)
+	}
+
+	pool.SetState(1, BackendUnhealthy)
+
+	if got := pool.State(1); got != BackendUnhealthy {
+		t.Fatalf("backend-2 state = %v, want unhealthy", got)
+	}
+
+	if got := pool.State(0); got != BackendHealthy {
+		t.Fatalf("backend-1 state = %v, want healthy", got)
+	}
+}
