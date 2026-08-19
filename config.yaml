@@ -4,12 +4,15 @@ server:
 backends:
   - name: users-service
     url: http://127.0.0.1:9000
+    health_check_path: /health
 
   - name: users-service
     url: http://127.0.0.1:9001
+    health_check_path: /health
 
   - name: users-service
-    url: http://127.0.0.1:9002   
+    url: http://127.0.0.1:9002
+    health_check_path: /health
 
 routes:
   - method: GET
