@@ -107,3 +107,39 @@ func TestHealthCheckerTimeout(t *testing.T) {
 		t.Fatal("Check() = true, want false")
 	}
 }
+
+func TestHealthCheckerTCP(t *testing.T) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(
+			w http.ResponseWriter,
+			r *http.Request,
+		) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer server.Close()
+
+	checker := NewHealthChecker()
+
+	backend := &core.Backend{
+		URL: server.URL,
+		// No HealthCheckPath: TCP fallback
+	}
+
+	if !checker.Check(backend) {
+		t.Fatal("Check() = false, want true")
+	}
+}
+
+func TestHealthCheckerTCPFailure(t *testing.T) {
+	checker := NewHealthChecker()
+
+	backend := &core.Backend{
+		URL: "http://127.0.0.1:1",
+		// No HealthCheckPath: TCP fallback
+	}
+
+	if checker.Check(backend) {
+		t.Fatal("Check() = true, want false")
+	}
+}
