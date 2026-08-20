@@ -9,11 +9,17 @@ import (
 type BackendPool struct {
 	backends []*core.Backend
 	states   []atomic.Uint32
-	next     atomic.Uint64
+
+	failures []atomic.Uint32
+	success  []atomic.Uint32
+
+	next atomic.Uint64
 }
 
 func NewBackendPool(backends []*core.Backend) *BackendPool {
 	states := make([]atomic.Uint32, len(backends))
+	failures := make([]atomic.Uint32, len(backends))
+	success := make([]atomic.Uint32, len(backends))
 
 	for i := range states {
 		states[i].Store(uint32(BackendHealthy))
@@ -22,6 +28,8 @@ func NewBackendPool(backends []*core.Backend) *BackendPool {
 	return &BackendPool{
 		backends: backends,
 		states:   states,
+		failures: failures,
+		success:  success,
 	}
 }
 
