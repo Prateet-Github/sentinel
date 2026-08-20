@@ -231,3 +231,101 @@ func TestBackendPoolHealth(t *testing.T) {
 		t.Fatalf("backend-1 state = %v, want healthy", got)
 	}
 }
+
+func TestBackendPoolFailureThreshold(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+	}
+
+	pool := NewBackendPool(backends)
+
+	// First failure: should still be healthy
+	pool.RecordResult(0, false)
+
+	if got := pool.State(0); got != BackendHealthy {
+		t.Fatalf("state after 1 failure = %v, want healthy", got)
+	}
+
+	// Second consecutive failure: should become unhealthy
+	pool.RecordResult(0, false)
+
+	if got := pool.State(0); got != BackendUnhealthy {
+		t.Fatalf("state after 2 failures = %v, want unhealthy", got)
+	}
+}
+
+func TestBackendPoolSuccessThreshold(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+	}
+
+	pool := NewBackendPool(backends)
+
+	// Put backend into unhealthy state first
+	pool.SetState(0, BackendUnhealthy)
+
+	// First success: should still be unhealthy
+	pool.RecordResult(0, true)
+
+	if got := pool.State(0); got != BackendUnhealthy {
+		t.Fatalf("state after 1 success = %v, want unhealthy", got)
+	}
+
+	// Second consecutive success: should become healthy
+	pool.RecordResult(0, true)
+
+	if got := pool.State(0); got != BackendHealthy {
+		t.Fatalf("state after 2 successes = %v, want healthy", got)
+	}
+}
+
+func TestBackendPoolSuccessResetsFailureStreak(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+	}
+
+	pool := NewBackendPool(backends)
+
+	// First failure
+	pool.RecordResult(0, false)
+
+	// Success should reset the failure streak
+	pool.RecordResult(0, true)
+
+	// Another failure should count as failure #1, not #2
+	pool.RecordResult(0, false)
+
+	if got := pool.State(0); got != BackendHealthy {
+		t.Fatalf(
+			"state after failure-success-failure = %v, want healthy",
+			got,
+		)
+	}
+}
+
+func TestBackendPoolFailureResetsSuccessStreak(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+	}
+
+	pool := NewBackendPool(backends)
+
+	// Start unhealthy
+	pool.SetState(0, BackendUnhealthy)
+
+	// First success
+	pool.RecordResult(0, true)
+
+	// Failure should reset the success streak
+	pool.RecordResult(0, false)
+
+	// Another success should count as success #1, not #2
+	pool.RecordResult(0, true)
+
+	if got := pool.State(0); got != BackendUnhealthy {
+		t.Fatalf(
+			"state after success-failure-success = %v, want unhealthy",
+			got,
+		)
+	}
+}
