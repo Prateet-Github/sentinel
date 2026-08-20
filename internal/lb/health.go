@@ -16,6 +16,11 @@ const (
 	BackendUnhealthy
 )
 
+const (
+	failureThreshold uint32 = 2
+	successThreshold uint32 = 2
+)
+
 type HealthChecker struct {
 	client  *http.Client
 	timeout time.Duration
@@ -69,4 +74,28 @@ func (h *HealthChecker) checkTCP(backend *core.Backend) bool {
 	defer conn.Close()
 
 	return true
+}
+
+func (p *BackendPool) RecordResult(index int, healthy bool) {
+	if healthy {
+		p.failures[index].Store(0)
+
+		successes := p.success[index].Add(1)
+
+		if successes >= successThreshold {
+			p.states[index].Store(uint32(BackendHealthy))
+			p.success[index].Store(0)
+		}
+
+		return
+	}
+
+	p.success[index].Store(0)
+
+	failures := p.failures[index].Add(1)
+
+	if failures >= failureThreshold {
+		p.states[index].Store(uint32(BackendUnhealthy))
+		p.failures[index].Store(0)
+	}
 }
