@@ -48,3 +48,12 @@ func (m *HealthMonitor) Start(
 		}
 	}()
 }
+
+func (m *HealthMonitor) StartAll(
+	ctx context.Context,
+	lb *LoadBalancer,
+) {
+	for _, pool := range lb.pools {
+		m.Start(ctx, pool)
+	}
+}

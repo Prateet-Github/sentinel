@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"time"
 
 	"github.com/Prateet-Github/sentinel/internal/config"
 	"github.com/Prateet-Github/sentinel/internal/dataplane"
@@ -12,7 +14,6 @@ import (
 )
 
 func main() {
-
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
@@ -30,6 +31,16 @@ func main() {
 		r,
 		loadBalancer,
 		cfg,
+	)
+
+	monitor := lb.NewHealthMonitor(
+		lb.NewHealthChecker(),
+		5*time.Second,
+	)
+
+	monitor.StartAll(
+		context.Background(),
+		loadBalancer,
 	)
 
 	log.Printf("Sentinel listening on :%d", cfg.Server.Port)
