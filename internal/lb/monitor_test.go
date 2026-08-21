@@ -1,9 +1,11 @@
 package lb
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
 )
@@ -40,7 +42,8 @@ func TestHealthMonitorCheckPool(t *testing.T) {
 
 	checker := NewHealthChecker()
 
-	monitor := NewHealthMonitor(checker)
+	monitor := NewHealthMonitor(checker,
+		5*time.Second)
 
 	// 1st check: failure threshold not reached yet
 	monitor.CheckPool(pool)
@@ -62,5 +65,44 @@ func TestHealthMonitorCheckPool(t *testing.T) {
 
 	if got := pool.State(1); got != BackendUnhealthy {
 		t.Fatalf("unhealthy backend after 2 checks = %v, want unhealthy", got)
+	}
+}
+
+func TestHealthMonitorStart(t *testing.T) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}),
+	)
+	defer server.Close()
+
+	backends := []*core.Backend{
+		{
+			Name:            "backend-1",
+			URL:             server.URL,
+			HealthCheckPath: "/",
+		},
+	}
+
+	pool := NewBackendPool(backends)
+
+	monitor := NewHealthMonitor(
+		NewHealthChecker(),
+		10*time.Millisecond,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	monitor.Start(ctx, pool)
+
+	// Wait long enough for at least two health checks
+	time.Sleep(100 * time.Millisecond)
+
+	if got := pool.State(0); got != BackendUnhealthy {
+		t.Fatalf(
+			"backend state = %v, want unhealthy",
+			got,
+		)
 	}
 }

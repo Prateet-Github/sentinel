@@ -1,12 +1,21 @@
 package lb
 
+import (
+	"context"
+	"time"
+)
+
 type HealthMonitor struct {
-	checker *HealthChecker
+	checker  *HealthChecker
+	interval time.Duration
 }
 
-func NewHealthMonitor(checker *HealthChecker) *HealthMonitor {
+func NewHealthMonitor(
+	checker *HealthChecker,
+	interval time.Duration) *HealthMonitor {
 	return &HealthMonitor{
-		checker: checker,
+		checker:  checker,
+		interval: interval,
 	}
 }
 
@@ -16,4 +25,26 @@ func (m *HealthMonitor) CheckPool(pool *BackendPool) {
 		healthy := m.checker.Check(backend)
 		pool.RecordResult(i, healthy)
 	}
+}
+
+func (m *HealthMonitor) Start(
+	ctx context.Context,
+	pool *BackendPool,
+) {
+	go func() {
+		m.CheckPool(pool)
+
+		ticker := time.NewTicker(m.interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+				m.CheckPool(pool)
+			}
+		}
+	}()
 }
