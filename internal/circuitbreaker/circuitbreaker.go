@@ -36,3 +36,26 @@ func New(
 		resetTimeout:     resetTimeout,
 	}
 }
+
+func (cb *CircuitBreaker) Allow() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	switch cb.state {
+	case Closed:
+		return true
+
+	case Open:
+		if time.Since(cb.openedAt) >= cb.resetTimeout {
+			cb.state = HalfOpen
+			return true
+		}
+
+		return false
+
+	case HalfOpen:
+		return true
+	}
+
+	return false
+}
