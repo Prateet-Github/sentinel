@@ -24,6 +24,8 @@ type CircuitBreaker struct {
 	resetTimeout     time.Duration
 
 	openedAt time.Time
+
+	probeInFlight bool
 }
 
 func New(
@@ -46,14 +48,20 @@ func (cb *CircuitBreaker) Allow() bool {
 		return true
 
 	case Open:
-		if time.Since(cb.openedAt) >= cb.resetTimeout {
-			cb.state = HalfOpen
-			return true
+		if time.Since(cb.openedAt) < cb.resetTimeout {
+			return false
 		}
 
-		return false
+		cb.state = HalfOpen
+		cb.probeInFlight = true
+		return true
 
 	case HalfOpen:
+		if cb.probeInFlight {
+			return false
+		}
+
+		cb.probeInFlight = true
 		return true
 	}
 
@@ -67,6 +75,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	cb.failures = 0
 	if cb.state == HalfOpen {
 		cb.state = Closed
+		cb.probeInFlight = false
 	}
 
 }
@@ -87,5 +96,6 @@ func (cb *CircuitBreaker) RecordFailure() {
 	case HalfOpen:
 		cb.state = Open
 		cb.openedAt = time.Now()
+		cb.probeInFlight = false
 	}
 }
