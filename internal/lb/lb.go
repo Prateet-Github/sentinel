@@ -2,7 +2,9 @@ package lb
 
 import (
 	"sync/atomic"
+	"time"
 
+	"github.com/Prateet-Github/sentinel/internal/circuitbreaker"
 	"github.com/Prateet-Github/sentinel/internal/core"
 )
 
@@ -13,16 +15,25 @@ type BackendPool struct {
 	failures []atomic.Uint32
 	success  []atomic.Uint32
 
+	breakers []*circuitbreaker.CircuitBreaker
+
 	next atomic.Uint64
+}
+
+type BackendSelection struct {
+	Backend *core.Backend
+	Breaker *circuitbreaker.CircuitBreaker
 }
 
 func NewBackendPool(backends []*core.Backend) *BackendPool {
 	states := make([]atomic.Uint32, len(backends))
 	failures := make([]atomic.Uint32, len(backends))
 	success := make([]atomic.Uint32, len(backends))
+	breakers := make([]*circuitbreaker.CircuitBreaker, len(backends))
 
 	for i := range states {
 		states[i].Store(uint32(BackendHealthy))
+		breakers[i] = circuitbreaker.New(3, 10*time.Second)
 	}
 
 	return &BackendPool{
@@ -30,10 +41,11 @@ func NewBackendPool(backends []*core.Backend) *BackendPool {
 		states:   states,
 		failures: failures,
 		success:  success,
+		breakers: breakers,
 	}
 }
 
-func (p *BackendPool) Next() *core.Backend {
+func (p *BackendPool) Next() *BackendSelection {
 	if len(p.backends) == 0 {
 		return nil
 	}
@@ -43,8 +55,17 @@ func (p *BackendPool) Next() *core.Backend {
 	for i := uint64(0); i < uint64(len(p.backends)); i++ {
 		idx := (index + i) % uint64(len(p.backends))
 
-		if BackendState(p.states[idx].Load()) == BackendHealthy {
-			return p.backends[idx]
+		if BackendState(p.states[idx].Load()) != BackendHealthy {
+			continue
+		}
+
+		if !p.breakers[idx].Allow() {
+			continue
+		}
+
+		return &BackendSelection{
+			Backend: p.backends[idx],
+			Breaker: p.breakers[idx],
 		}
 	}
 

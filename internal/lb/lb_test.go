@@ -35,17 +35,18 @@ func TestBackendPoolRoundRobin(t *testing.T) {
 	}
 
 	for i, expected := range want {
+
 		got := pool.Next()
 
 		if got == nil {
 			t.Fatalf("Next() returned nil at iteration %d", i)
 		}
 
-		if got.Name != expected {
+		if got.Backend.Name != expected {
 			t.Fatalf(
 				"iteration %d: got %q, want %q",
 				i,
-				got.Name,
+				got.Backend.Name,
 				expected,
 			)
 		}

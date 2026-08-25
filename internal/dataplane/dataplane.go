@@ -36,12 +36,12 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r = r.WithContext(router.WithParams(r.Context(), params)) // after successful route match, add params to request context
 
-	proxy, ok := p.resolveBackend(w, route)
+	selection, ok := p.resolveBackend(w, route)
 	if !ok {
 		return
 	}
 
-	p.forward(proxy, w, r)
+	p.forward(selection, w, r)
 }
 
 func (p *Dataplane) matchRoute(
@@ -62,7 +62,7 @@ func (p *Dataplane) matchRoute(
 func (p *Dataplane) resolveBackend(
 	w http.ResponseWriter,
 	route *core.Route,
-) (*core.Backend, bool) {
+) (*lb.BackendSelection, bool) {
 
 	pool, ok := p.lb.Get(route.Backend)
 	if !ok {
@@ -74,8 +74,8 @@ func (p *Dataplane) resolveBackend(
 		return nil, false
 	}
 
-	backend := pool.Next()
-	if backend == nil {
+	selection := pool.Next()
+	if selection == nil {
 		http.Error(
 			w,
 			"no backends available",
@@ -84,15 +84,15 @@ func (p *Dataplane) resolveBackend(
 		return nil, false
 	}
 
-	return backend, true
+	return selection, true
 }
 
 func (p *Dataplane) forward(
-	backend *core.Backend,
+	selection *lb.BackendSelection,
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	handler, err := proxy.New(backend.URL)
+	handler, err := proxy.New(selection.Backend.URL)
 	if err != nil {
 		http.Error(
 			w,
