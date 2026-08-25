@@ -92,7 +92,17 @@ func (p *Dataplane) forward(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	handler, err := proxy.New(selection.Backend.URL, nil)
+	handler, err := proxy.New(
+		selection.Backend.URL,
+		func(error) {
+			selection.Breaker.RecordFailure()
+		},
+		func(resp *http.Response) {
+			if resp.StatusCode < http.StatusInternalServerError {
+				selection.Breaker.RecordSuccess()
+			}
+		},
+	)
 	if err != nil {
 		http.Error(
 			w,

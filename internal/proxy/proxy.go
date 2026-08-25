@@ -28,11 +28,13 @@ var optimizedTransport = &http.Transport{
 type Proxy struct {
 	reverseProxy *httputil.ReverseProxy
 	onError      func(error)
+	onResponse   func(*http.Response)
 }
 
 func New(
 	target string,
 	onError func(error),
+	onResponse func(*http.Response),
 ) (*Proxy, error) {
 	u, err := url.Parse(target)
 	if err != nil {
@@ -45,6 +47,7 @@ func New(
 	p := &Proxy{
 		reverseProxy: rp,
 		onError:      onError,
+		onResponse:   onResponse,
 	}
 
 	rp.ErrorHandler = func(
@@ -54,6 +57,14 @@ func New(
 	) {
 		if p.onError != nil {
 			p.onError(err)
+		}
+
+		rp.ModifyResponse = func(resp *http.Response) error {
+			if p.onResponse != nil {
+				p.onResponse(resp)
+			}
+
+			return nil
 		}
 
 		http.Error(

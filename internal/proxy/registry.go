@@ -17,7 +17,7 @@ func NewRegistry(cfg *core.Config) (*Registry, error) {
 	}
 
 	for _, backend := range cfg.Backends {
-		p, err := New(backend.URL, nil)
+		p, err := New(backend.URL, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("proxy %s: %w", backend.Name, err)
 		}
