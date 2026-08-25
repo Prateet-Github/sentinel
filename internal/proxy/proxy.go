@@ -27,9 +27,13 @@ var optimizedTransport = &http.Transport{
 
 type Proxy struct {
 	reverseProxy *httputil.ReverseProxy
+	onError      func(error)
 }
 
-func New(target string) (*Proxy, error) {
+func New(
+	target string,
+	onError func(error),
+) (*Proxy, error) {
 	u, err := url.Parse(target)
 	if err != nil {
 		return nil, err
@@ -38,11 +42,29 @@ func New(target string) (*Proxy, error) {
 	rp := httputil.NewSingleHostReverseProxy(u)
 	rp.Transport = optimizedTransport
 
-	return &Proxy{
+	p := &Proxy{
 		reverseProxy: rp,
-	}, nil
-}
+		onError:      onError,
+	}
 
+	rp.ErrorHandler = func(
+		w http.ResponseWriter,
+		r *http.Request,
+		err error,
+	) {
+		if p.onError != nil {
+			p.onError(err)
+		}
+
+		http.Error(
+			w,
+			"upstream unavailable",
+			http.StatusBadGateway,
+		)
+	}
+
+	return p, nil
+}
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.reverseProxy.ServeHTTP(w, r)
 }

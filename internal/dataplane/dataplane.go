@@ -92,7 +92,7 @@ func (p *Dataplane) forward(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	handler, err := proxy.New(selection.Backend.URL)
+	handler, err := proxy.New(selection.Backend.URL, nil)
 	if err != nil {
 		http.Error(
 			w,
