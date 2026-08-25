@@ -50,6 +50,14 @@ func New(
 		onResponse:   onResponse,
 	}
 
+	rp.ModifyResponse = func(resp *http.Response) error {
+		if p.onResponse != nil {
+			p.onResponse(resp)
+		}
+
+		return nil
+	}
+
 	rp.ErrorHandler = func(
 		w http.ResponseWriter,
 		r *http.Request,
@@ -57,14 +65,6 @@ func New(
 	) {
 		if p.onError != nil {
 			p.onError(err)
-		}
-
-		rp.ModifyResponse = func(resp *http.Response) error {
-			if p.onResponse != nil {
-				p.onResponse(resp)
-			}
-
-			return nil
 		}
 
 		http.Error(
@@ -76,6 +76,7 @@ func New(
 
 	return p, nil
 }
+
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.reverseProxy.ServeHTTP(w, r)
 }

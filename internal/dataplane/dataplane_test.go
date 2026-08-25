@@ -333,3 +333,100 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 		}
 	}
 }
+
+func TestCircuitBreakerIntegration(t *testing.T) {
+	backendRequests := 0
+
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendRequests++
+
+			http.Error(
+				w,
+				"backend failure",
+				http.StatusInternalServerError,
+			)
+		}),
+	)
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users-service",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool([]*core.Backend{
+		{
+			Name: "users-service",
+			URL:  backend.URL,
+		},
+	})
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users-service": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf(
+				"request %d: status = %d, want %d",
+				i+1,
+				rec.Code,
+				http.StatusInternalServerError,
+			)
+		}
+	}
+
+	if backendRequests != 3 {
+		t.Fatalf(
+			"backend requests = %d, want 3",
+			backendRequests,
+		)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf(
+			"request 4: status = %d, want %d",
+			rec.Code,
+			http.StatusBadGateway,
+		)
+	}
+
+	if backendRequests != 3 {
+		t.Fatalf(
+			"backend was called after circuit opened: got %d requests, want 3",
+			backendRequests,
+		)
+	}
+}
