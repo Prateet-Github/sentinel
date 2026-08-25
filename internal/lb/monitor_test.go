@@ -38,7 +38,7 @@ func TestHealthMonitorCheckPool(t *testing.T) {
 		},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	checker := NewHealthChecker()
 
@@ -84,7 +84,7 @@ func TestHealthMonitorStart(t *testing.T) {
 		},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	monitor := NewHealthMonitor(
 		NewHealthChecker(),

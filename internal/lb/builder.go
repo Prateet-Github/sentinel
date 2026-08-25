@@ -1,6 +1,8 @@
 package lb
 
-import "github.com/Prateet-Github/sentinel/internal/core"
+import (
+	"github.com/Prateet-Github/sentinel/internal/core"
+)
 
 func BuildLoadBalancer(cfg *core.Config) *LoadBalancer {
 	pools := make(map[string]*BackendPool)
@@ -17,7 +19,10 @@ func BuildLoadBalancer(cfg *core.Config) *LoadBalancer {
 	}
 
 	for name, backends := range grouped {
-		pools[name] = NewBackendPool(backends)
+		pools[name] = NewBackendPool(
+			backends,
+			DefaultCircuitBreakerConfig(),
+		)
 	}
 
 	return NewLoadBalancer(pools)

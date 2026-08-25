@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
 	"github.com/Prateet-Github/sentinel/internal/lb"
@@ -91,7 +92,7 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 		},
 	}
 
-	pool := lb.NewBackendPool(backends)
+	pool := lb.NewBackendPool(backends, lb.DefaultCircuitBreakerConfig())
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -150,7 +151,7 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 			Name: "users",
 			URL:  "http://localhost:9000",
 		},
-	})
+	}, lb.DefaultCircuitBreakerConfig())
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -282,7 +283,7 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 		_ = i
 	}
 
-	pool := lb.NewBackendPool(poolBackends)
+	pool := lb.NewBackendPool(poolBackends, lb.DefaultCircuitBreakerConfig())
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -336,16 +337,23 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 
 func TestCircuitBreakerIntegration(t *testing.T) {
 	backendRequests := 0
+	backendHealthy := false
 
 	backend := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			backendRequests++
 
-			http.Error(
-				w,
-				"backend failure",
-				http.StatusInternalServerError,
-			)
+			if !backendHealthy {
+				http.Error(
+					w,
+					"backend failure",
+					http.StatusInternalServerError,
+				)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("backend recovered"))
 		}),
 	)
 	defer backend.Close()
@@ -362,12 +370,18 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 
 	r := router.NewRadixRouter(cfg)
 
-	pool := lb.NewBackendPool([]*core.Backend{
-		{
-			Name: "users-service",
-			URL:  backend.URL,
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name: "users-service",
+				URL:  backend.URL,
+			},
 		},
-	})
+		lb.CircuitBreakerConfig{
+			FailureThreshold: 3,
+			ResetTimeout:     50 * time.Millisecond,
+		},
+	)
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -426,6 +440,66 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	if backendRequests != 3 {
 		t.Fatalf(
 			"backend was called after circuit opened: got %d requests, want 3",
+			backendRequests,
+		)
+	}
+
+	// Backend recovers while the circuit is open
+	backendHealthy = true
+
+	// Wait for the circuit reset timeout
+	time.Sleep(60 * time.Millisecond)
+
+	// This request should be the single Half-Open probe
+	// The backend is healthy now, so the circuit should close
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec = httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"recovery probe: status = %d, want %d",
+			rec.Code,
+			http.StatusOK,
+		)
+	}
+
+	if backendRequests != 4 {
+		t.Fatalf(
+			"backend requests after recovery probe = %d, want 4",
+			backendRequests,
+		)
+	}
+
+	// The circuit should now be Closed, so normal requests
+	// should reach the backend again
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec = httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"request after recovery: status = %d, want %d",
+			rec.Code,
+			http.StatusOK,
+		)
+	}
+
+	if backendRequests != 5 {
+		t.Fatalf(
+			"backend requests after circuit closed = %d, want 5",
 			backendRequests,
 		)
 	}

@@ -25,7 +25,23 @@ type BackendSelection struct {
 	Breaker *circuitbreaker.CircuitBreaker
 }
 
-func NewBackendPool(backends []*core.Backend) *BackendPool {
+type CircuitBreakerConfig struct {
+	FailureThreshold int
+	ResetTimeout     time.Duration
+}
+
+func DefaultCircuitBreakerConfig() CircuitBreakerConfig {
+	return CircuitBreakerConfig{
+		FailureThreshold: 3,
+		ResetTimeout:     10 * time.Second,
+	}
+}
+
+func NewBackendPool(
+	backends []*core.Backend,
+	breakerConfig CircuitBreakerConfig,
+
+) *BackendPool {
 	states := make([]atomic.Uint32, len(backends))
 	failures := make([]atomic.Uint32, len(backends))
 	success := make([]atomic.Uint32, len(backends))
@@ -33,7 +49,10 @@ func NewBackendPool(backends []*core.Backend) *BackendPool {
 
 	for i := range states {
 		states[i].Store(uint32(BackendHealthy))
-		breakers[i] = circuitbreaker.New(3, 10*time.Second)
+		breakers[i] = circuitbreaker.New(
+			breakerConfig.FailureThreshold,
+			breakerConfig.ResetTimeout,
+		)
 	}
 
 	return &BackendPool{

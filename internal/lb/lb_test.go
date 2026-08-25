@@ -23,7 +23,7 @@ func TestBackendPoolRoundRobin(t *testing.T) {
 		},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	want := []string{
 		"backend-1",
@@ -54,7 +54,7 @@ func TestBackendPoolRoundRobin(t *testing.T) {
 }
 
 func TestBackendPoolEmpty(t *testing.T) {
-	pool := NewBackendPool(nil)
+	pool := NewBackendPool(nil, DefaultCircuitBreakerConfig())
 
 	if got := pool.Next(); got != nil {
 		t.Fatalf("Next() = %v, want nil", got)
@@ -68,7 +68,7 @@ func TestBackendPoolConcurrent(t *testing.T) {
 		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	const goroutines = 100
 	const requestsPerGoroutine = 1000
@@ -98,7 +98,7 @@ func BenchmarkBackendPoolNext(b *testing.B) {
 		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -112,11 +112,11 @@ func TestLoadBalancerGet(t *testing.T) {
 	users := NewBackendPool([]*core.Backend{
 		{URL: "http://localhost:9001"},
 		{URL: "http://localhost:9002"},
-	})
+	}, DefaultCircuitBreakerConfig())
 
 	orders := NewBackendPool([]*core.Backend{
 		{URL: "http://localhost:9101"},
-	})
+	}, DefaultCircuitBreakerConfig())
 
 	lb := NewLoadBalancer(map[string]*BackendPool{
 		"users-service":  users,
@@ -216,7 +216,7 @@ func TestBackendPoolHealth(t *testing.T) {
 		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	if got := pool.State(0); got != BackendHealthy {
 		t.Fatalf("backend-1 state = %v, want healthy", got)
@@ -238,7 +238,7 @@ func TestBackendPoolFailureThreshold(t *testing.T) {
 		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	// First failure: should still be healthy
 	pool.RecordResult(0, false)
@@ -260,7 +260,7 @@ func TestBackendPoolSuccessThreshold(t *testing.T) {
 		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	// Put backend into unhealthy state first
 	pool.SetState(0, BackendUnhealthy)
@@ -285,7 +285,7 @@ func TestBackendPoolSuccessResetsFailureStreak(t *testing.T) {
 		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	// First failure
 	pool.RecordResult(0, false)
@@ -309,7 +309,7 @@ func TestBackendPoolFailureResetsSuccessStreak(t *testing.T) {
 		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
 	}
 
-	pool := NewBackendPool(backends)
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
 
 	// Start unhealthy
 	pool.SetState(0, BackendUnhealthy)
