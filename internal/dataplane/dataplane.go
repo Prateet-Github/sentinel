@@ -98,9 +98,12 @@ func (p *Dataplane) forward(
 			selection.Breaker.RecordFailure()
 		},
 		func(resp *http.Response) {
-			if resp.StatusCode < http.StatusInternalServerError {
-				selection.Breaker.RecordSuccess()
+			if resp.StatusCode >= http.StatusInternalServerError {
+				selection.Breaker.RecordFailure()
+				return
 			}
+
+			selection.Breaker.RecordSuccess()
 		},
 	)
 	if err != nil {
