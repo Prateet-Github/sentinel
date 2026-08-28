@@ -1,13 +1,12 @@
 # Sentinel
 
-Sentinel is a high-performance distributed edge platform built with Go.
+Sentinel is an API Gateway built with Go.
 
-## Goals
+## Current
 
-- High-performance reverse proxy
-- Adaptive routing
-- Load balancing
-- Lock-free rate limiting
-- Resilience primitives
-- Decoupled control plane
-- Distributed cluster management
+- Radix Router with parameter support
+- Round-robin Load Balancer
+- HTTP Health Checker with TCP fallback
+- Per-backend Circuit Breaker
+- Reverse Proxy
+- `pprof` profiling
