@@ -18,6 +18,26 @@ func NewPolicy(
 	}
 }
 
-func (p RetryPolicy) MethodAllowed(method string) bool {
+func (p RetryPolicy) ShouldRetryMethod(method string) bool {
 	return p.RetryableMethods[method]
+}
+
+func (p RetryPolicy) ShouldRetryStatus(status int) bool {
+	return p.RetryableStatus[status]
+}
+
+func (p RetryPolicy) ShouldRetry(
+	method string,
+	status int,
+	err error,
+) bool {
+	if !p.ShouldRetryMethod(method) {
+		return false
+	}
+
+	if err != nil {
+		return true
+	}
+
+	return p.ShouldRetryStatus(status)
 }
