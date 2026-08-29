@@ -1,5 +1,9 @@
 package retry
 
+import (
+	"net/http"
+)
+
 type RetryPolicy struct {
 	MaxAttempts      int
 	RetryableMethods map[string]bool
@@ -16,6 +20,24 @@ func NewPolicy(
 		RetryableMethods: methods,
 		RetryableStatus:  statuses,
 	}
+}
+
+func DefaultPolicy() RetryPolicy {
+	return NewPolicy(
+		3,
+		map[string]bool{
+			http.MethodGet:     true,
+			http.MethodHead:    true,
+			http.MethodOptions: true,
+			http.MethodPut:     true,
+			http.MethodDelete:  true,
+		},
+		map[int]bool{
+			http.StatusBadGateway:         true, // 502
+			http.StatusServiceUnavailable: true, // 503
+			http.StatusGatewayTimeout:     true, // 504
+		},
+	)
 }
 
 func (p RetryPolicy) ShouldRetryMethod(method string) bool {
