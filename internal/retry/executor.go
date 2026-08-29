@@ -39,7 +39,7 @@ func (e *Executor) Execute(
 			return resp, err
 		}
 
-		if err == nil && resp != nil {
+		if err == nil && resp != nil && resp.Body != nil {
 			resp.Body.Close()
 		}
 
