@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -186,6 +187,103 @@ func TestExecutorDoesNotRetryNonRetryableMethod(t *testing.T) {
 	if attempts != 1 {
 		t.Fatalf(
 			"attempts = %d, want 1",
+			attempts,
+		)
+	}
+}
+
+func TestExecutorRetriesNetworkError(t *testing.T) {
+	backoff := &testBackoff{
+		delays: []time.Duration{
+			0,
+			0,
+		},
+	}
+
+	executor := NewExecutor(
+		DefaultPolicy(),
+		backoff,
+	)
+
+	attempts := 0
+
+	_, err := executor.Execute(
+		http.MethodGet,
+		func() (*http.Response, error) {
+			attempts++
+
+			return nil, errors.New("connection refused")
+		},
+	)
+
+	if err == nil {
+		t.Fatal("Execute() error = nil, want error")
+	}
+
+	if attempts != 3 {
+		t.Fatalf(
+			"attempts = %d, want 3",
+			attempts,
+		)
+	}
+
+	if backoff.calls != 2 {
+		t.Fatalf(
+			"backoff calls = %d, want 2",
+			backoff.calls,
+		)
+	}
+}
+
+func TestExecutorNetworkErrorEventuallySucceeds(t *testing.T) {
+	backoff := &testBackoff{
+		delays: []time.Duration{
+			0,
+			0,
+		},
+	}
+
+	executor := NewExecutor(
+		DefaultPolicy(),
+		backoff,
+	)
+
+	attempts := 0
+
+	resp, err := executor.Execute(
+		http.MethodGet,
+		func() (*http.Response, error) {
+			attempts++
+
+			if attempts < 3 {
+				return nil, errors.New("connection reset")
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+			}, nil
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if resp == nil {
+		t.Fatal("response = nil, want response")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"status = %d, want %d",
+			resp.StatusCode,
+			http.StatusOK,
+		)
+	}
+
+	if attempts != 3 {
+		t.Fatalf(
+			"attempts = %d, want 3",
 			attempts,
 		)
 	}
