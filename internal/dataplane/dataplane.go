@@ -1,6 +1,7 @@
 package dataplane
 
 import (
+	"io"
 	"net/http"
 	"time"
 
@@ -105,17 +106,8 @@ func (p *Dataplane) forward(
 ) {
 	handler, err := proxy.New(
 		selection.Backend.URL,
-		func(error) {
-			selection.Breaker.RecordFailure()
-		},
-		func(resp *http.Response) {
-			if resp.StatusCode >= http.StatusInternalServerError {
-				selection.Breaker.RecordFailure()
-				return
-			}
-
-			selection.Breaker.RecordSuccess()
-		},
+		nil,
+		nil,
 	)
 	if err != nil {
 		http.Error(
@@ -126,5 +118,39 @@ func (p *Dataplane) forward(
 		return
 	}
 
-	handler.ServeHTTP(w, r)
+	resp, err := p.retry.Execute(
+		r.Method,
+		func() (*http.Response, error) {
+			return handler.Attempt(r)
+		},
+	)
+
+	if err != nil {
+		selection.Breaker.RecordFailure()
+
+		http.Error(
+			w,
+			"upstream unavailable",
+			http.StatusBadGateway,
+		)
+		return
+	}
+
+	if resp.StatusCode >= http.StatusInternalServerError {
+		selection.Breaker.RecordFailure()
+	} else {
+		selection.Breaker.RecordSuccess()
+	}
+
+	defer resp.Body.Close()
+
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+
+	_, _ = io.Copy(w, resp.Body)
 }
