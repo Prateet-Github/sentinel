@@ -2,16 +2,19 @@ package dataplane
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
 	"github.com/Prateet-Github/sentinel/internal/lb"
 	"github.com/Prateet-Github/sentinel/internal/proxy"
+	"github.com/Prateet-Github/sentinel/internal/retry"
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
 type Dataplane struct {
 	router router.Router
 	lb     *lb.LoadBalancer
+	retry  *retry.Executor
 }
 
 func New(
@@ -22,7 +25,15 @@ func New(
 	return &Dataplane{
 		router: router,
 		lb:     lb,
+		retry: retry.NewExecutor(
+			retry.DefaultPolicy(),
+			retry.ExponentialBackoff{
+				Base: 10 * time.Millisecond,
+				Max:  100 * time.Millisecond,
+			},
+		),
 	}
+
 }
 
 func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
