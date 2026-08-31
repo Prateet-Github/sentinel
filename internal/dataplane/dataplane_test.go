@@ -504,3 +504,89 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		)
 	}
 }
+
+func TestDataplaneRetryIntegration(t *testing.T) {
+	backendRequests := 0
+
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendRequests++
+
+			if backendRequests < 3 {
+				http.Error(
+					w,
+					"temporary failure",
+					http.StatusServiceUnavailable,
+				)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("success"))
+		}),
+	)
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users-service",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name: "users-service",
+				URL:  backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users-service": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"status = %d, want %d",
+			rec.Code,
+			http.StatusOK,
+		)
+	}
+
+	if got := strings.TrimSpace(rec.Body.String()); got != "success" {
+		t.Fatalf(
+			"response = %q, want %q",
+			got,
+			"success",
+		)
+	}
+
+	if backendRequests != 3 {
+		t.Fatalf(
+			"backend requests = %d, want 3",
+			backendRequests,
+		)
+	}
+}
