@@ -29,6 +29,7 @@ type Proxy struct {
 	reverseProxy *httputil.ReverseProxy
 	onError      func(error)
 	onResponse   func(*http.Response)
+	target       *url.URL
 }
 
 func New(
@@ -48,6 +49,7 @@ func New(
 		reverseProxy: rp,
 		onError:      onError,
 		onResponse:   onResponse,
+		target:       u,
 	}
 
 	rp.ModifyResponse = func(resp *http.Response) error {
@@ -75,6 +77,28 @@ func New(
 	}
 
 	return p, nil
+}
+
+func (p *Proxy) Attempt(r *http.Request) (*http.Response, error) {
+	upstream := r.Clone(r.Context())
+
+	upstream.URL.Scheme = p.target.Scheme
+	upstream.URL.Host = p.target.Host
+
+	resp, err := optimizedTransport.RoundTrip(upstream)
+	if err != nil {
+		if p.onError != nil {
+			p.onError(err)
+		}
+
+		return nil, err
+	}
+
+	if p.onResponse != nil {
+		p.onResponse(resp)
+	}
+
+	return resp, nil
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
