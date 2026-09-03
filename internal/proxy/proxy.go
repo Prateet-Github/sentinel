@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -85,12 +86,24 @@ func (p *Proxy) Attempt(r *http.Request) (*http.Response, error) {
 	upstream.URL.Scheme = p.target.Scheme
 	upstream.URL.Host = p.target.Host
 
+	if r.Body != nil && r.ContentLength != 0 {
+		if r.GetBody == nil {
+			return nil, errors.New("request body is not replayable")
+		}
+
+		body, err := r.GetBody()
+		if err != nil {
+			return nil, err
+		}
+
+		upstream.Body = body
+	}
+
 	resp, err := optimizedTransport.RoundTrip(upstream)
 	if err != nil {
 		if p.onError != nil {
 			p.onError(err)
 		}
-
 		return nil, err
 	}
 

@@ -1,10 +1,13 @@
 package dataplane
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -588,5 +591,130 @@ func TestDataplaneRetryIntegration(t *testing.T) {
 			"backend requests = %d, want 3",
 			backendRequests,
 		)
+	}
+}
+
+func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
+	var (
+		mu              sync.Mutex
+		backendRequests int
+		receivedBodies  []string
+	)
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		backendRequests++
+		requestNumber := backendRequests
+		mu.Unlock()
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Logf("backend attempt %d: body=%q", requestNumber, string(body))
+
+		mu.Lock()
+		receivedBodies = append(receivedBodies, string(body))
+		mu.Unlock()
+
+		if requestNumber == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodPut,
+				Path:    "/users/:id",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	backends := []*core.Backend{
+		{
+			URL: backend.URL,
+		},
+	}
+
+	pool := lb.NewBackendPool(
+		backends,
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	body := []byte("hello")
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/users/42",
+		bytes.NewReader(body),
+	)
+
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+
+	// t.Logf("GetBody available: %v", req.GetBody != nil)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Logf("response body: %q", rec.Body.String())
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	if rec.Body.String() != "success" {
+		t.Fatalf(
+			"expected response body %q, got %q",
+			"success",
+			rec.Body.String(),
+		)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if backendRequests != 2 {
+		t.Fatalf(
+			"expected 2 backend requests, got %d",
+			backendRequests,
+		)
+	}
+
+	if len(receivedBodies) != 2 {
+		t.Fatalf(
+			"expected 2 received bodies, got %d",
+			len(receivedBodies),
+		)
+	}
+
+	for i, body := range receivedBodies {
+		if body != "hello" {
+			t.Fatalf(
+				"attempt %d: expected body %q, got %q",
+				i+1,
+				"hello",
+				body,
+			)
+		}
 	}
 }
