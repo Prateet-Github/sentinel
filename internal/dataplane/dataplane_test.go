@@ -808,3 +808,70 @@ func TestDataplaneRetryNetworkError(t *testing.T) {
 		)
 	}
 }
+
+// retry exhaustion: if all attempts fail, the last error is returned to the client
+func TestDataplaneRetryExhaustion(t *testing.T) {
+	var backendRequests atomic.Int32
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendRequests.Add(1)
+
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("temporary failure"))
+	}))
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				URL: backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf(
+			"expected status 503, got %d, body=%q",
+			rec.Code,
+			rec.Body.String(),
+		)
+	}
+
+	if got := backendRequests.Load(); got != 3 {
+		t.Fatalf(
+			"expected 3 backend requests, got %d",
+			got,
+		)
+	}
+}
