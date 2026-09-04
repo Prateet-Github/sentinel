@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"math/rand"
 	"time"
 )
 
@@ -21,4 +22,23 @@ func (b ExponentialBackoff) Delay(attempt int) time.Duration {
 	}
 
 	return delay
+}
+
+type FullJitterBackoff struct {
+	Base time.Duration
+	Max  time.Duration
+}
+
+func (b FullJitterBackoff) Delay(attempt int) time.Duration {
+	exponential := b.Base * time.Duration(1<<(attempt-1))
+
+	if exponential > b.Max {
+		exponential = b.Max
+	}
+
+	if exponential <= 0 {
+		return 0
+	}
+
+	return time.Duration(rand.Int63n(int64(exponential)))
 }

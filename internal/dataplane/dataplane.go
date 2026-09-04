@@ -29,13 +29,12 @@ func New(
 		lb:     lb,
 		retry: retry.NewExecutor(
 			retry.DefaultPolicy(),
-			retry.ExponentialBackoff{
+			retry.FullJitterBackoff{
 				Base: 10 * time.Millisecond,
 				Max:  100 * time.Millisecond,
 			},
 		),
 	}
-
 }
 
 func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
