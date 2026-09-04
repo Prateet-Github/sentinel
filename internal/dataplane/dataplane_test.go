@@ -809,7 +809,6 @@ func TestDataplaneRetryNetworkError(t *testing.T) {
 	}
 }
 
-// retry exhaustion: if all attempts fail, the last error is returned to the client
 func TestDataplaneRetryExhaustion(t *testing.T) {
 	var backendRequests atomic.Int32
 
@@ -871,6 +870,210 @@ func TestDataplaneRetryExhaustion(t *testing.T) {
 	if got := backendRequests.Load(); got != 3 {
 		t.Fatalf(
 			"expected 3 backend requests, got %d",
+			got,
+		)
+	}
+}
+
+func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
+	var backendRequests atomic.Int32
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendRequests.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				URL: backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	// One logical request exhausts all 3 retry attempts
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf(
+			"expected status 503, got %d",
+			rec.Code,
+		)
+	}
+
+	if got := backendRequests.Load(); got != 3 {
+		t.Fatalf(
+			"expected 3 backend attempts, got %d",
+			got,
+		)
+	}
+
+	// Two more logical failures should open the breaker
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf(
+				"request %d: expected status 503, got %d",
+				i+2,
+				rec.Code,
+			)
+		}
+	}
+
+	// First request = 3 attempts
+	// Second request = 3 attempts
+	// Third request = 3 attempts
+	if got := backendRequests.Load(); got != 9 {
+		t.Fatalf(
+			"expected 9 backend attempts before breaker opens, got %d",
+			got,
+		)
+	}
+
+	// The fourth logical request must be blocked by the OPEN breaker
+	req = httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec = httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf(
+			"expected status 502 from open breaker, got %d",
+			rec.Code,
+		)
+	}
+
+	// Backend must not receive another request
+	if got := backendRequests.Load(); got != 9 {
+		t.Fatalf(
+			"expected backend attempts to remain at 9, got %d",
+			got,
+		)
+	}
+}
+
+func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
+	var backendRequests atomic.Int32
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendRequests.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				URL: backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	// Open the breaker with 3 logical failures.
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+	}
+
+	if got := backendRequests.Load(); got != 9 {
+		t.Fatalf("expected 9 backend attempts, got %d", got)
+	}
+
+	// Breaker is now OPEN.
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf(
+			"expected status 502, got %d",
+			rec.Code,
+		)
+	}
+
+	// Most important assertion:
+	// OPEN breaker prevented the request from entering retry/proxy
+	if got := backendRequests.Load(); got != 9 {
+		t.Fatalf(
+			"expected no additional backend attempts, got %d",
 			got,
 		)
 	}
