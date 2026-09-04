@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -716,5 +717,94 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 				body,
 			)
 		}
+	}
+}
+
+func TestDataplaneRetryNetworkError(t *testing.T) {
+	var backendRequests atomic.Int32
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestNumber := backendRequests.Add(1)
+
+		if requestNumber == 1 {
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("response writer does not support hijacking")
+			}
+
+			conn, _, err := hijacker.Hijack()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_ = conn.Close()
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+	}))
+	defer backend.Close()
+
+	cfg := &core.Config{
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				URL: backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"expected status 200, got %d, body=%q",
+			rec.Code,
+			rec.Body.String(),
+		)
+	}
+
+	if rec.Body.String() != "success" {
+		t.Fatalf(
+			"expected response body %q, got %q",
+			"success",
+			rec.Body.String(),
+		)
+	}
+
+	if got := backendRequests.Load(); got != 2 {
+		t.Fatalf(
+			"expected 2 backend requests, got %d",
+			got,
+		)
 	}
 }
