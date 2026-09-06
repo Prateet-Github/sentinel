@@ -9,6 +9,7 @@ import (
 	"github.com/Prateet-Github/sentinel/internal/core"
 	"github.com/Prateet-Github/sentinel/internal/lb"
 	"github.com/Prateet-Github/sentinel/internal/proxy"
+	"github.com/Prateet-Github/sentinel/internal/ratelimiter"
 	"github.com/Prateet-Github/sentinel/internal/retry"
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
@@ -17,6 +18,7 @@ type Dataplane struct {
 	router router.Router
 	lb     *lb.LoadBalancer
 	retry  *retry.Executor
+	limit  *ratelimiter.RateLimiter
 }
 
 func New(
@@ -34,6 +36,7 @@ func New(
 				Max:  100 * time.Millisecond,
 			},
 		),
+		limit: ratelimiter.NewRateLimiter(100, 100),
 	}
 }
 
@@ -46,7 +49,16 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r = r.WithContext(router.WithParams(r.Context(), params)) // after successful route match, add params to request context
+	r = r.WithContext(router.WithParams(r.Context(), params))
+
+	if !p.limit.Allow(r.RemoteAddr) {
+		http.Error(
+			w,
+			"rate limit exceeded",
+			http.StatusTooManyRequests,
+		)
+		return
+	}
 
 	selection, ok := p.resolveBackend(w, route)
 	if !ok {
