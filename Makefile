@@ -18,7 +18,7 @@ race:
 
 .PHONY: bench
 bench:
-	go test -bench=. ./...
+	go test -bench=. -benchmem ./...
 
 .PHONY: build
 build:
