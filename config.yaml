@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+rate_limit:
+  enabled: true
+  capacity: 100
+  refill_rate: 100
+
 backends:
   - name: users-service
     url: http://127.0.0.1:9000
@@ -53,8 +58,8 @@ routes:
 
   - method: GET
     path: /users/:id
-    backend: users-service 
+    backend: users-service
 
   - method: GET
     path: /files/*path
-    backend: users-service  
+    backend: users-service
