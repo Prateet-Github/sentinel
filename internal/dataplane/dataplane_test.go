@@ -1255,3 +1255,68 @@ func TestDataplaneRateLimitDisabled(t *testing.T) {
 		)
 	}
 }
+
+func BenchmarkDataplaneRateLimitFull(b *testing.B) {
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer backend.Close()
+
+	cfg := &core.Config{
+		RateLimit: core.RateLimit{
+			Enabled:    true,
+			Capacity:   1_000_000,
+			RefillRate: 1_000_000,
+		},
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name: "users",
+				URL:  backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	req.RemoteAddr = "client-1:1234"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			b.Fatalf("expected 200, got %d", rec.Code)
+		}
+	}
+}

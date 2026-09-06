@@ -1,7 +1,6 @@
 package dataplane
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -139,10 +138,6 @@ func (p *Dataplane) forward(
 		r.Method,
 		func() (*http.Response, error) {
 			resp, err := handler.Attempt(r)
-
-			if err != nil {
-				fmt.Printf("ATTEMPT ERROR: %v\n", err)
-			}
 
 			return resp, err
 		},
