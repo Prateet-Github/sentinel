@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1074,6 +1075,182 @@ func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 	if got := backendRequests.Load(); got != 9 {
 		t.Fatalf(
 			"expected no additional backend attempts, got %d",
+			got,
+		)
+	}
+}
+
+func TestDataplaneRateLimit(t *testing.T) {
+	var backendCalls atomic.Int32
+
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &core.Config{
+		RateLimit: core.RateLimit{
+			Enabled:    true,
+			Capacity:   100,
+			RefillRate: 0,
+		},
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name: "users",
+				URL:  backendURL.String(),
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	for i := 0; i < 100; i++ {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		req.RemoteAddr = "client-1:1234"
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf(
+				"request %d: expected 200, got %d",
+				i+1,
+				rec.Code,
+			)
+		}
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/users",
+		nil,
+	)
+
+	req.RemoteAddr = "client-1:1234"
+
+	rec := httptest.NewRecorder()
+
+	dp.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf(
+			"expected 429 after rate limit, got %d",
+			rec.Code,
+		)
+	}
+
+	if got := backendCalls.Load(); got != 100 {
+		t.Fatalf(
+			"expected exactly 100 backend calls, got %d",
+			got,
+		)
+	}
+}
+
+func TestDataplaneRateLimitDisabled(t *testing.T) {
+	var backendCalls atomic.Int32
+
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer backend.Close()
+
+	cfg := &core.Config{
+		RateLimit: core.RateLimit{
+			Enabled:    false,
+			Capacity:   1,
+			RefillRate: 0,
+		},
+		Routes: []core.Route{
+			{
+				Method:  http.MethodGet,
+				Path:    "/users",
+				Backend: "users",
+			},
+		},
+	}
+
+	r := router.NewRadixRouter(cfg)
+
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name: "users",
+				URL:  backend.URL,
+			},
+		},
+		lb.DefaultCircuitBreakerConfig(),
+	)
+
+	loadBalancer := lb.NewLoadBalancer(
+		map[string]*lb.BackendPool{
+			"users": pool,
+		},
+	)
+
+	dp := New(r, loadBalancer, cfg)
+
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/users",
+			nil,
+		)
+
+		req.RemoteAddr = "client-1:1234"
+
+		rec := httptest.NewRecorder()
+
+		dp.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf(
+				"request %d: expected 200, got %d",
+				i+1,
+				rec.Code,
+			)
+		}
+	}
+
+	if got := backendCalls.Load(); got != 10 {
+		t.Fatalf(
+			"expected 10 backend calls, got %d",
 			got,
 		)
 	}

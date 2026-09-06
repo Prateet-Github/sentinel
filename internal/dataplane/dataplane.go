@@ -15,10 +15,11 @@ import (
 )
 
 type Dataplane struct {
-	router router.Router
-	lb     *lb.LoadBalancer
-	retry  *retry.Executor
-	limit  *ratelimiter.RateLimiter
+	router    router.Router
+	lb        *lb.LoadBalancer
+	retry     *retry.Executor
+	limit     *ratelimiter.RateLimiter
+	rateLimit bool
 }
 
 func New(
@@ -36,7 +37,11 @@ func New(
 				Max:  100 * time.Millisecond,
 			},
 		),
-		limit: ratelimiter.NewRateLimiter(100, 100),
+		limit: ratelimiter.NewRateLimiter(
+			config.RateLimit.Capacity,
+			config.RateLimit.RefillRate,
+		),
+		rateLimit: config.RateLimit.Enabled,
 	}
 }
 
@@ -51,7 +56,7 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r = r.WithContext(router.WithParams(r.Context(), params))
 
-	if !p.limit.Allow(r.RemoteAddr) {
+	if p.rateLimit && !p.limit.Allow(r.RemoteAddr) {
 		http.Error(
 			w,
 			"rate limit exceeded",
