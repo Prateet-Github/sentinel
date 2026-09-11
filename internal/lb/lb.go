@@ -17,7 +17,7 @@ type BackendPool struct {
 
 	breakers []*circuitbreaker.CircuitBreaker
 
-	next atomic.Uint64
+	strategy SelectionStrategy
 }
 
 type BackendSelection struct {
@@ -61,6 +61,7 @@ func NewBackendPool(
 		failures: failures,
 		success:  success,
 		breakers: breakers,
+		strategy: &RoundRobinStrategy{},
 	}
 }
 
@@ -69,26 +70,16 @@ func (p *BackendPool) Next() *BackendSelection {
 		return nil
 	}
 
-	index := p.next.Add(1) - 1
+	idx := p.strategy.Select(p)
 
-	for i := uint64(0); i < uint64(len(p.backends)); i++ {
-		idx := (index + i) % uint64(len(p.backends))
-
-		if BackendState(p.states[idx].Load()) != BackendHealthy {
-			continue
-		}
-
-		if !p.breakers[idx].Allow() {
-			continue
-		}
-
-		return &BackendSelection{
-			Backend: p.backends[idx],
-			Breaker: p.breakers[idx],
-		}
+	if idx == -1 {
+		return nil
 	}
 
-	return nil
+	return &BackendSelection{
+		Backend: p.backends[idx],
+		Breaker: p.breakers[idx],
+	}
 }
 
 type LoadBalancer struct {
