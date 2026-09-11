@@ -191,7 +191,7 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 			b.Fatal("backend pool not found")
 		}
 
-		_ = pool.Next()
+		_, _ = pool.Next()
 	}
 }
 

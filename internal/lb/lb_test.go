@@ -35,11 +35,10 @@ func TestBackendPoolRoundRobin(t *testing.T) {
 	}
 
 	for i, expected := range want {
+		got, ok := pool.Next()
 
-		got := pool.Next()
-
-		if got == nil {
-			t.Fatalf("Next() returned nil at iteration %d", i)
+		if !ok {
+			t.Fatalf("Next() failed at iteration %d", i)
 		}
 
 		if got.Backend.Name != expected {
@@ -56,8 +55,8 @@ func TestBackendPoolRoundRobin(t *testing.T) {
 func TestBackendPoolEmpty(t *testing.T) {
 	pool := NewBackendPool(nil, DefaultCircuitBreakerConfig())
 
-	if got := pool.Next(); got != nil {
-		t.Fatalf("Next() = %v, want nil", got)
+	if _, ok := pool.Next(); ok {
+		t.Fatal("Next() succeeded, want failure")
 	}
 }
 
@@ -81,8 +80,10 @@ func TestBackendPoolConcurrent(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < requestsPerGoroutine; j++ {
-				if backend := pool.Next(); backend == nil {
-					t.Error("Next() returned nil")
+				_, ok := pool.Next()
+
+				if !ok {
+					t.Error("Next() failed")
 				}
 			}
 		}()
@@ -104,7 +105,7 @@ func BenchmarkBackendPoolNext(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = pool.Next()
+		_, _ = pool.Next()
 	}
 }
 

@@ -65,21 +65,21 @@ func NewBackendPool(
 	}
 }
 
-func (p *BackendPool) Next() *BackendSelection {
+func (p *BackendPool) Next() (BackendSelection, bool) {
 	if len(p.backends) == 0 {
-		return nil
+		return BackendSelection{}, false
 	}
 
 	idx := p.strategy.Select(p)
 
 	if idx == -1 {
-		return nil
+		return BackendSelection{}, false
 	}
 
-	return &BackendSelection{
+	return BackendSelection{
 		Backend: p.backends[idx],
 		Breaker: p.breakers[idx],
-	}
+	}, true
 }
 
 type LoadBalancer struct {

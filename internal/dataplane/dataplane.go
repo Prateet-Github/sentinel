@@ -90,7 +90,7 @@ func (p *Dataplane) matchRoute(
 func (p *Dataplane) resolveBackend(
 	w http.ResponseWriter,
 	route *core.Route,
-) (*lb.BackendSelection, bool) {
+) (lb.BackendSelection, bool) {
 
 	pool, ok := p.lb.Get(route.Backend)
 	if !ok {
@@ -99,27 +99,28 @@ func (p *Dataplane) resolveBackend(
 			"backend pool not found",
 			http.StatusBadGateway,
 		)
-		return nil, false
+		return lb.BackendSelection{}, false
 	}
 
-	selection := pool.Next()
-	if selection == nil {
+	selection, ok := pool.Next()
+	if !ok {
 		http.Error(
 			w,
 			"no backends available",
 			http.StatusBadGateway,
 		)
-		return nil, false
+		return lb.BackendSelection{}, false
 	}
 
 	return selection, true
 }
 
 func (p *Dataplane) forward(
-	selection *lb.BackendSelection,
+	selection lb.BackendSelection,
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+
 	handler, err := proxy.New(
 		selection.Backend.URL,
 		nil,
