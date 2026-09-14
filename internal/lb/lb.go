@@ -18,6 +18,8 @@ type BackendPool struct {
 	breakers []*circuitbreaker.CircuitBreaker
 
 	strategy SelectionStrategy
+
+	connections []atomic.Int64
 }
 
 type BackendSelection struct {
@@ -46,6 +48,7 @@ func NewBackendPool(
 	failures := make([]atomic.Uint32, len(backends))
 	success := make([]atomic.Uint32, len(backends))
 	breakers := make([]*circuitbreaker.CircuitBreaker, len(backends))
+	connections := make([]atomic.Int64, len(backends))
 
 	for i := range states {
 		states[i].Store(uint32(BackendHealthy))
@@ -56,12 +59,13 @@ func NewBackendPool(
 	}
 
 	return &BackendPool{
-		backends: backends,
-		states:   states,
-		failures: failures,
-		success:  success,
-		breakers: breakers,
-		strategy: &RoundRobinStrategy{},
+		backends:    backends,
+		states:      states,
+		failures:    failures,
+		success:     success,
+		breakers:    breakers,
+		connections: connections,
+		strategy:    &RoundRobinStrategy{},
 	}
 }
 
