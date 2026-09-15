@@ -20,11 +20,7 @@ func (r *RoundRobinStrategy) Select(pool *BackendPool) int {
 	for i := uint64(0); i < uint64(len(pool.backends)); i++ {
 		idx := (index + i) % uint64(len(pool.backends))
 
-		if BackendState(pool.states[idx].Load()) != BackendHealthy {
-			continue
-		}
-
-		if !pool.breakers[idx].Allow() {
+		if !pool.Available(int(idx)) {
 			continue
 		}
 

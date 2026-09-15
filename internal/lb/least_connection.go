@@ -14,11 +14,8 @@ func (l *LeastConnectionStrategy) Select(pool *BackendPool) int {
 	minConnections := int64(math.MaxInt64)
 
 	for i := range pool.backends {
-		if BackendState(pool.states[i].Load()) != BackendHealthy {
 
-			continue
-		}
-		if !pool.breakers[i].Allow() {
+		if !pool.Available(i) {
 			continue
 		}
 		connections := pool.connections[i].Load()

@@ -120,3 +120,15 @@ func (p *BackendPool) IncrementConnections(index int) {
 func (p *BackendPool) DecrementConnections(index int) {
 	p.connections[index].Add(-1)
 }
+
+func (p *BackendPool) Available(index int) bool {
+	if BackendState(p.states[index].Load()) != BackendHealthy {
+		return false
+	}
+
+	if !p.breakers[index].Allow() {
+		return false
+	}
+
+	return true
+}
