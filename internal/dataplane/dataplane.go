@@ -121,6 +121,9 @@ func (p *Dataplane) forward(
 	r *http.Request,
 ) {
 
+	selection.Pool.IncrementConnections(selection.Index)
+	defer selection.Pool.DecrementConnections(selection.Index)
+
 	handler, err := proxy.New(
 		selection.Backend.URL,
 		nil,

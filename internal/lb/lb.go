@@ -25,6 +25,8 @@ type BackendPool struct {
 type BackendSelection struct {
 	Backend *core.Backend
 	Breaker *circuitbreaker.CircuitBreaker
+	Index   int
+	Pool    *BackendPool
 }
 
 type CircuitBreakerConfig struct {
@@ -83,6 +85,8 @@ func (p *BackendPool) Next() (BackendSelection, bool) {
 	return BackendSelection{
 		Backend: p.backends[idx],
 		Breaker: p.breakers[idx],
+		Index:   idx,
+		Pool:    p,
 	}, true
 }
 
@@ -107,4 +111,12 @@ func (p *BackendPool) State(index int) BackendState {
 
 func (p *BackendPool) SetState(index int, state BackendState) {
 	p.states[index].Store(uint32(state))
+}
+
+func (p *BackendPool) IncrementConnections(index int) {
+	p.connections[index].Add(1)
+}
+
+func (p *BackendPool) DecrementConnections(index int) {
+	p.connections[index].Add(-1)
 }

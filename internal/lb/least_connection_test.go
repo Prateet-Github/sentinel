@@ -3,6 +3,8 @@ package lb
 import (
 	"testing"
 
+	"sync"
+
 	"github.com/Prateet-Github/sentinel/internal/core"
 )
 
@@ -79,5 +81,53 @@ func TestLeastConnectionsAllUnavailable(t *testing.T) {
 
 	if got != -1 {
 		t.Fatalf("got %d, want -1", got)
+	}
+}
+
+func TestBackendPoolConnections(t *testing.T) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+	}
+
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
+
+	const goroutines = 100
+	const increments = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < increments; j++ {
+				pool.IncrementConnections(0)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if got := pool.connections[0].Load(); got != 100000 {
+		t.Fatalf("got %d connections, want 100000", got)
+	}
+
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+
+			for j := 0; j < increments; j++ {
+				pool.DecrementConnections(0)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if got := pool.connections[0].Load(); got != 0 {
+		t.Fatalf("got %d connections, want 0", got)
 	}
 }
