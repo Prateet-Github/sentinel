@@ -331,3 +331,77 @@ func TestBackendPoolFailureResetsSuccessStreak(t *testing.T) {
 		)
 	}
 }
+
+func BenchmarkBackendPoolParallel_RoundRobin(b *testing.B) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+		{Name: "backend-2", URL: "http://127.0.0.1:9002"},
+		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
+		{Name: "backend-4", URL: "http://127.0.0.1:9004"},
+		{Name: "backend-5", URL: "http://127.0.0.1:9005"},
+		{Name: "backend-6", URL: "http://127.0.0.1:9006"},
+		{Name: "backend-7", URL: "http://127.0.0.1:9007"},
+		{Name: "backend-8", URL: "http://127.0.0.1:9008"},
+		{Name: "backend-9", URL: "http://127.0.0.1:9009"},
+		{Name: "backend-10", URL: "http://127.0.0.1:9010"},
+	}
+
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = pool.Next()
+		}
+	})
+}
+
+func BenchmarkBackendPoolParallel_LeastConnections(b *testing.B) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+		{Name: "backend-2", URL: "http://127.0.0.1:9002"},
+		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
+		{Name: "backend-4", URL: "http://127.0.0.1:9004"},
+		{Name: "backend-5", URL: "http://127.0.0.1:9005"},
+		{Name: "backend-6", URL: "http://127.0.0.1:9006"},
+		{Name: "backend-7", URL: "http://127.0.0.1:9007"},
+		{Name: "backend-8", URL: "http://127.0.0.1:9008"},
+		{Name: "backend-9", URL: "http://127.0.0.1:9009"},
+		{Name: "backend-10", URL: "http://127.0.0.1:9010"},
+	}
+
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
+	pool.strategy = &LeastConnectionStrategy{}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = pool.Next()
+		}
+	})
+}
+
+func BenchmarkBackendPoolParallel_P2C(b *testing.B) {
+	backends := []*core.Backend{
+		{Name: "backend-1", URL: "http://127.0.0.1:9001"},
+		{Name: "backend-2", URL: "http://127.0.0.1:9002"},
+		{Name: "backend-3", URL: "http://127.0.0.1:9003"},
+		{Name: "backend-4", URL: "http://127.0.0.1:9004"},
+		{Name: "backend-5", URL: "http://127.0.0.1:9005"},
+		{Name: "backend-6", URL: "http://127.0.0.1:9006"},
+		{Name: "backend-7", URL: "http://127.0.0.1:9007"},
+		{Name: "backend-8", URL: "http://127.0.0.1:9008"},
+		{Name: "backend-9", URL: "http://127.0.0.1:9009"},
+		{Name: "backend-10", URL: "http://127.0.0.1:9010"},
+	}
+
+	pool := NewBackendPool(backends, DefaultCircuitBreakerConfig())
+	pool.strategy = &PowerOfTwoStrategy{}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = pool.Next()
+		}
+	})
+}
