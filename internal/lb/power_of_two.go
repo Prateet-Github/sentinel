@@ -18,11 +18,18 @@ func (p *PowerOfTwoStrategy) Select(pool *BackendPool) int {
 		second = rand.Intn(n)
 	}
 
-	if !pool.Available(first) {
+	firstAvailable := pool.Available(first)
+	secondAvailable := pool.Available(second)
+
+	if !firstAvailable && !secondAvailable {
+		return -1
+	}
+
+	if !firstAvailable {
 		return second
 	}
 
-	if !pool.Available(second) {
+	if !secondAvailable {
 		return first
 	}
 
