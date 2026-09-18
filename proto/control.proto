@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package sentinel.control.v1;
+
+option go_package = "github.com/Prateet-Github/sentinel/proto";
+
+service SentinelControl {
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+
+  rpc AddBackend(AddBackendRequest) returns (AddBackendResponse);
+  rpc RemoveBackend(RemoveBackendRequest) returns (RemoveBackendResponse);
+
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+  rpc AddRoute(AddRouteRequest) returns (AddRouteResponse);
+  rpc RemoveRoute(RemoveRouteRequest) returns (RemoveRouteResponse);
+}
+
+message Service {
+  string name = 1;
+  repeated Backend backends = 2;
+}
+
+message Backend {
+  string name = 1;
+  string url = 2;
+  string health_check_path = 3;
+}
+
+message Route {
+  string method = 1;
+  string path = 2;
+  string service_name = 3;
+}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  repeated Service services = 1;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message GetServiceResponse {
+  Service service = 1;
+}
+
+message AddBackendRequest {
+  string service_name = 1;
+  Backend backend = 2;
+}
+
+message AddBackendResponse {
+  Backend backend = 1;
+}
+
+message RemoveBackendRequest {
+  string service_name = 1;
+  string backend_name = 2;
+}
+
+message RemoveBackendResponse {}
+
+message ListRoutesRequest {}
+
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+message AddRouteRequest {
+  Route route = 1;
+}
+
+message AddRouteResponse {
+  Route route = 1;
+}
+
+message RemoveRouteRequest {
+  string method = 1;
+  string path = 2;
+}
+
+message RemoveRouteResponse {}
