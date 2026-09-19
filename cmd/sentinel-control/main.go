@@ -7,6 +7,7 @@ import (
 	"github.com/Prateet-Github/sentinel/internal/controlplane"
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -20,6 +21,7 @@ func main() {
 	controlServer := &controlplane.Server{}
 
 	controlv1.RegisterSentinelControlServer(server, controlServer)
+	reflection.Register(server)
 
 	log.Println("Sentinel Control Plane listening on :9090")
 
