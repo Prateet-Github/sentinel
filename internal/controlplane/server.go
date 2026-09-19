@@ -35,3 +35,20 @@ func (s *Server) GetService(
 		Service: service,
 	}, nil
 }
+
+func (s *Server) AddBackend(
+	ctx context.Context,
+	req *controlv1.AddBackendRequest,
+) (*controlv1.AddBackendResponse, error) {
+	backend, err := s.store.AddBackend(
+		req.GetServiceName(),
+		req.GetBackend(),
+	)
+	if err != nil {
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
+
+	return &controlv1.AddBackendResponse{
+		Backend: backend,
+	}, nil
+}

@@ -50,3 +50,30 @@ func (s *Store) GetService(name string) (*controlv1.Service, error) {
 
 	return service, nil
 }
+
+func (s *Store) AddBackend(
+	serviceName string,
+	backend *controlv1.Backend,
+) (*controlv1.Backend, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	service, exists := s.services[serviceName]
+
+	if !exists {
+		service = &controlv1.Service{
+			Name: serviceName,
+		}
+		s.services[serviceName] = service
+	}
+
+	for _, existing := range service.Backends {
+		if existing.Name == backend.Name {
+			return nil, fmt.Errorf("backend %q already exists", backend.Name)
+		}
+	}
+
+	service.Backends = append(service.Backends, backend)
+
+	return backend, nil
+}
