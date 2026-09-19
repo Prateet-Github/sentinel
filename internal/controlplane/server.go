@@ -4,15 +4,34 @@ import (
 	"context"
 
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
 	controlv1.UnimplementedSentinelControlServer
+	store *Store
 }
 
 func (s *Server) ListServices(
 	ctx context.Context,
 	req *controlv1.ListServicesRequest,
 ) (*controlv1.ListServicesResponse, error) {
-	return &controlv1.ListServicesResponse{}, nil
+	return &controlv1.ListServicesResponse{
+		Services: s.store.ListServices(),
+	}, nil
+}
+
+func (s *Server) GetService(
+	ctx context.Context,
+	req *controlv1.GetServiceRequest,
+) (*controlv1.GetServiceResponse, error) {
+	service, err := s.store.GetService(req.GetName())
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	return &controlv1.GetServiceResponse{
+		Service: service,
+	}, nil
 }

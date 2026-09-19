@@ -18,10 +18,14 @@ func main() {
 
 	server := grpc.NewServer()
 
-	controlServer := &controlplane.Server{}
+	// controlServer := &controlplane.Server{}
+
+	store := controlplane.NewStore()
+
+	controlServer := controlplane.NewServer(store)
 
 	controlv1.RegisterSentinelControlServer(server, controlServer)
-	reflection.Register(server)
+	reflection.Register(server) // for debugging with grpcurl (found it today nvm)
 
 	log.Println("Sentinel Control Plane listening on :9090")
 
