@@ -30,3 +30,7 @@ go.work.sum
 
 .DS_Store
 .vscode
+
+# Sentinel runtime database
+sentinel.db
+sentinel.db-*
