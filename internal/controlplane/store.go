@@ -62,29 +62,29 @@ func (s *Store) AddBackend(
 
 	service, exists := s.services[serviceName]
 
-	if !exists {
-		if err := s.storage.CreateService(serviceName); err != nil {
-			return nil, err
+	if exists {
+		for _, existing := range service.Backends {
+			if existing.Name == backend.Name {
+				return nil, fmt.Errorf(
+					"backend %q already exists",
+					backend.Name,
+				)
+			}
 		}
+	}
 
+	// persist everything atomically
+	if err := s.storage.AddBackend(serviceName, backend); err != nil {
+		return nil, err
+	}
+
+	// only update memory after SQLite commit succeeds
+	if !exists {
 		service = &controlv1.Service{
 			Name: serviceName,
 		}
 
 		s.services[serviceName] = service
-	}
-
-	for _, existing := range service.Backends {
-		if existing.Name == backend.Name {
-			return nil, fmt.Errorf(
-				"backend %q already exists",
-				backend.Name,
-			)
-		}
-	}
-
-	if err := s.storage.CreateBackend(serviceName, backend); err != nil {
-		return nil, err
 	}
 
 	service.Backends = append(service.Backends, backend)

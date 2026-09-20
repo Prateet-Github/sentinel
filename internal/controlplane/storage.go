@@ -61,6 +61,45 @@ func (s *Storage) CreateBackend(
 	return err
 }
 
+func (s *Storage) AddBackend(
+	serviceName string,
+	backend *controlv1.Backend,
+) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(
+		`INSERT INTO services (name)
+         VALUES (?)
+         ON CONFLICT(name) DO NOTHING`,
+		serviceName,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(
+		`INSERT INTO backends (
+            name,
+            service_name,
+            url,
+            health_check_path
+        ) VALUES (?, ?, ?, ?)`,
+		backend.GetName(),
+		serviceName,
+		backend.GetUrl(),
+		backend.GetHealthCheckPath(),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (s *Storage) Close() error {
 	return s.db.Close()
 }
