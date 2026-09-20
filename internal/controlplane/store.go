@@ -11,12 +11,14 @@ type Store struct {
 	mu       sync.RWMutex // grpc server can handle multiple requests concurrently gotta protect the store with a mutex
 	services map[string]*controlv1.Service
 	routes   map[string]*controlv1.Route
+	storage  *Storage
 }
 
-func NewStore() *Store {
+func NewStore(storage *Storage) *Store {
 	return &Store{
 		services: make(map[string]*controlv1.Service),
 		routes:   make(map[string]*controlv1.Route),
+		storage:  storage,
 	}
 }
 
@@ -61,16 +63,28 @@ func (s *Store) AddBackend(
 	service, exists := s.services[serviceName]
 
 	if !exists {
+		if err := s.storage.CreateService(serviceName); err != nil {
+			return nil, err
+		}
+
 		service = &controlv1.Service{
 			Name: serviceName,
 		}
+
 		s.services[serviceName] = service
 	}
 
 	for _, existing := range service.Backends {
 		if existing.Name == backend.Name {
-			return nil, fmt.Errorf("backend %q already exists", backend.Name)
+			return nil, fmt.Errorf(
+				"backend %q already exists",
+				backend.Name,
+			)
 		}
+	}
+
+	if err := s.storage.CreateBackend(serviceName, backend); err != nil {
+		return nil, err
 	}
 
 	service.Backends = append(service.Backends, backend)

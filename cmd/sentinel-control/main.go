@@ -20,7 +20,13 @@ func main() {
 
 	// controlServer := &controlplane.Server{}
 
-	store := controlplane.NewStore()
+	storage, err := controlplane.NewStorage("sentinel.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer storage.Close()
+
+	store := controlplane.NewStore(storage)
 
 	controlServer := controlplane.NewServer(store)
 
