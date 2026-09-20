@@ -100,6 +100,92 @@ func (s *Storage) AddBackend(
 	return tx.Commit()
 }
 
+func (s *Storage) LoadServices() ([]*controlv1.Service, error) {
+	rows, err := s.db.Query(`
+		SELECT name
+		FROM services
+		ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	services := make([]*controlv1.Service, 0)
+
+	for rows.Next() {
+		var name string
+
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+
+		services = append(services, &controlv1.Service{
+			Name: name,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return services, nil
+}
+
+func (s *Storage) LoadBackends() (
+	map[string][]*controlv1.Backend,
+	error,
+) {
+	rows, err := s.db.Query(`
+		SELECT
+			service_name,
+			name,
+			url,
+			health_check_path
+		FROM backends
+		ORDER BY service_name, name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	backends := make(map[string][]*controlv1.Backend)
+
+	for rows.Next() {
+		var (
+			serviceName     string
+			name            string
+			url             string
+			healthCheckPath string
+		)
+
+		if err := rows.Scan(
+			&serviceName,
+			&name,
+			&url,
+			&healthCheckPath,
+		); err != nil {
+			return nil, err
+		}
+
+		backends[serviceName] = append(
+			backends[serviceName],
+			&controlv1.Backend{
+				Name:            name,
+				Url:             url,
+				HealthCheckPath: healthCheckPath,
+			},
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return backends, nil
+}
+
 func (s *Storage) Close() error {
 	return s.db.Close()
 }

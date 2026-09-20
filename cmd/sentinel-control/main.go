@@ -28,6 +28,10 @@ func main() {
 
 	store := controlplane.NewStore(storage)
 
+	if err := store.Load(); err != nil {
+		log.Fatal(err)
+	}
+
 	controlServer := controlplane.NewServer(store)
 
 	controlv1.RegisterSentinelControlServer(server, controlServer)

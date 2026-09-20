@@ -91,3 +91,25 @@ func (s *Store) AddBackend(
 
 	return backend, nil
 }
+
+func (s *Store) Load() error {
+	services, err := s.storage.LoadServices()
+	if err != nil {
+		return err
+	}
+
+	backends, err := s.storage.LoadBackends()
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, service := range services {
+		service.Backends = backends[service.Name]
+		s.services[service.Name] = service
+	}
+
+	return nil
+}
