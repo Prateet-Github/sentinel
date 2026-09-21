@@ -33,6 +33,31 @@ func main() {
 		cfg,
 	)
 
+	ctx := context.Background()
+
+	controlClient, err := dataplane.NewControlClient(
+		ctx,
+		"localhost:9090",
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer controlClient.Close()
+
+	snapshot, err := controlClient.StreamConfig(
+		ctx,
+		"dp-1",
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf(
+		"received config: %d services, %d routes",
+		len(snapshot.GetServices()),
+		len(snapshot.GetRoutes()),
+	)
+
 	monitor := lb.NewHealthMonitor(
 		lb.NewHealthChecker(),
 		5*time.Second,

@@ -66,7 +66,20 @@ func (s *Server) StreamConfig(
 
 	snapshot := s.store.Snapshot()
 
-	return stream.Send(&controlv1.ConfigResponse{
+	if err := stream.Send(&controlv1.ConfigResponse{
 		Snapshot: snapshot,
-	})
+	}); err != nil {
+		return err
+	}
+
+	// keep the stream alive
+	for {
+		if _, err := stream.Recv(); err != nil {
+			log.Printf(
+				"data plane disconnected: %s",
+				req.GetNodeId(),
+			)
+			return err
+		}
+	}
 }
