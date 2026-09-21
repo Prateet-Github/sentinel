@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"log"
 
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
 	"google.golang.org/grpc/codes"
@@ -51,4 +52,21 @@ func (s *Server) AddBackend(
 	return &controlv1.AddBackendResponse{
 		Backend: backend,
 	}, nil
+}
+
+func (s *Server) StreamConfig(
+	stream controlv1.SentinelControl_StreamConfigServer,
+) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("data plane connected: %s", req.GetNodeId())
+
+	snapshot := s.store.Snapshot()
+
+	return stream.Send(&controlv1.ConfigResponse{
+		Snapshot: snapshot,
+	})
 }

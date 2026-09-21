@@ -113,3 +113,25 @@ func (s *Store) Load() error {
 
 	return nil
 }
+
+func (s *Store) Snapshot() *controlv1.ConfigSnapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	services := make([]*controlv1.Service, 0, len(s.services))
+
+	for _, service := range s.services {
+		services = append(services, service)
+	}
+
+	routes := make([]*controlv1.Route, 0, len(s.routes))
+
+	for _, route := range s.routes {
+		routes = append(routes, route)
+	}
+
+	return &controlv1.ConfigSnapshot{
+		Services: services,
+		Routes:   routes,
+	}
+}
