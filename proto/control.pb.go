@@ -801,6 +801,146 @@ func (*RemoveRouteResponse) Descriptor() ([]byte, []int) {
 	return file_proto_control_proto_rawDescGZIP(), []int{16}
 }
 
+type ConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigRequest) Reset() {
+	*x = ConfigRequest{}
+	mi := &file_proto_control_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigRequest) ProtoMessage() {}
+
+func (x *ConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_control_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigRequest.ProtoReflect.Descriptor instead.
+func (*ConfigRequest) Descriptor() ([]byte, []int) {
+	return file_proto_control_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ConfigRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type ConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Snapshot      *ConfigSnapshot        `protobuf:"bytes,1,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigResponse) Reset() {
+	*x = ConfigResponse{}
+	mi := &file_proto_control_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigResponse) ProtoMessage() {}
+
+func (x *ConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_control_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigResponse.ProtoReflect.Descriptor instead.
+func (*ConfigResponse) Descriptor() ([]byte, []int) {
+	return file_proto_control_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ConfigResponse) GetSnapshot() *ConfigSnapshot {
+	if x != nil {
+		return x.Snapshot
+	}
+	return nil
+}
+
+type ConfigSnapshot struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Services      []*Service             `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`
+	Routes        []*Route               `protobuf:"bytes,2,rep,name=routes,proto3" json:"routes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSnapshot) Reset() {
+	*x = ConfigSnapshot{}
+	mi := &file_proto_control_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSnapshot) ProtoMessage() {}
+
+func (x *ConfigSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_control_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSnapshot.ProtoReflect.Descriptor instead.
+func (*ConfigSnapshot) Descriptor() ([]byte, []int) {
+	return file_proto_control_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ConfigSnapshot) GetServices() []*Service {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *ConfigSnapshot) GetRoutes() []*Route {
+	if x != nil {
+		return x.Routes
+	}
+	return nil
+}
+
 var File_proto_control_proto protoreflect.FileDescriptor
 
 const file_proto_control_proto_rawDesc = "" +
@@ -843,7 +983,14 @@ const file_proto_control_proto_rawDesc = "" +
 	"\x12RemoveRouteRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\"\x15\n" +
-	"\x13RemoveRouteResponse2\xb6\x05\n" +
+	"\x13RemoveRouteResponse\"(\n" +
+	"\rConfigRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"Q\n" +
+	"\x0eConfigResponse\x12?\n" +
+	"\bsnapshot\x18\x01 \x01(\v2#.sentinel.control.v1.ConfigSnapshotR\bsnapshot\"~\n" +
+	"\x0eConfigSnapshot\x128\n" +
+	"\bservices\x18\x01 \x03(\v2\x1c.sentinel.control.v1.ServiceR\bservices\x122\n" +
+	"\x06routes\x18\x02 \x03(\v2\x1a.sentinel.control.v1.RouteR\x06routes2\x93\x06\n" +
 	"\x0fSentinelControl\x12c\n" +
 	"\fListServices\x12(.sentinel.control.v1.ListServicesRequest\x1a).sentinel.control.v1.ListServicesResponse\x12]\n" +
 	"\n" +
@@ -854,7 +1001,8 @@ const file_proto_control_proto_rawDesc = "" +
 	"\n" +
 	"ListRoutes\x12&.sentinel.control.v1.ListRoutesRequest\x1a'.sentinel.control.v1.ListRoutesResponse\x12W\n" +
 	"\bAddRoute\x12$.sentinel.control.v1.AddRouteRequest\x1a%.sentinel.control.v1.AddRouteResponse\x12`\n" +
-	"\vRemoveRoute\x12'.sentinel.control.v1.RemoveRouteRequest\x1a(.sentinel.control.v1.RemoveRouteResponseB*Z(github.com/Prateet-Github/sentinel/protob\x06proto3"
+	"\vRemoveRoute\x12'.sentinel.control.v1.RemoveRouteRequest\x1a(.sentinel.control.v1.RemoveRouteResponse\x12[\n" +
+	"\fStreamConfig\x12\".sentinel.control.v1.ConfigRequest\x1a#.sentinel.control.v1.ConfigResponse(\x010\x01B*Z(github.com/Prateet-Github/sentinel/protob\x06proto3"
 
 var (
 	file_proto_control_proto_rawDescOnce sync.Once
@@ -868,7 +1016,7 @@ func file_proto_control_proto_rawDescGZIP() []byte {
 	return file_proto_control_proto_rawDescData
 }
 
-var file_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_proto_control_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_proto_control_proto_goTypes = []any{
 	(*Service)(nil),               // 0: sentinel.control.v1.Service
 	(*Backend)(nil),               // 1: sentinel.control.v1.Backend
@@ -887,6 +1035,9 @@ var file_proto_control_proto_goTypes = []any{
 	(*AddRouteResponse)(nil),      // 14: sentinel.control.v1.AddRouteResponse
 	(*RemoveRouteRequest)(nil),    // 15: sentinel.control.v1.RemoveRouteRequest
 	(*RemoveRouteResponse)(nil),   // 16: sentinel.control.v1.RemoveRouteResponse
+	(*ConfigRequest)(nil),         // 17: sentinel.control.v1.ConfigRequest
+	(*ConfigResponse)(nil),        // 18: sentinel.control.v1.ConfigResponse
+	(*ConfigSnapshot)(nil),        // 19: sentinel.control.v1.ConfigSnapshot
 }
 var file_proto_control_proto_depIdxs = []int32{
 	1,  // 0: sentinel.control.v1.Service.backends:type_name -> sentinel.control.v1.Backend
@@ -897,25 +1048,30 @@ var file_proto_control_proto_depIdxs = []int32{
 	2,  // 5: sentinel.control.v1.ListRoutesResponse.routes:type_name -> sentinel.control.v1.Route
 	2,  // 6: sentinel.control.v1.AddRouteRequest.route:type_name -> sentinel.control.v1.Route
 	2,  // 7: sentinel.control.v1.AddRouteResponse.route:type_name -> sentinel.control.v1.Route
-	3,  // 8: sentinel.control.v1.SentinelControl.ListServices:input_type -> sentinel.control.v1.ListServicesRequest
-	5,  // 9: sentinel.control.v1.SentinelControl.GetService:input_type -> sentinel.control.v1.GetServiceRequest
-	7,  // 10: sentinel.control.v1.SentinelControl.AddBackend:input_type -> sentinel.control.v1.AddBackendRequest
-	9,  // 11: sentinel.control.v1.SentinelControl.RemoveBackend:input_type -> sentinel.control.v1.RemoveBackendRequest
-	11, // 12: sentinel.control.v1.SentinelControl.ListRoutes:input_type -> sentinel.control.v1.ListRoutesRequest
-	13, // 13: sentinel.control.v1.SentinelControl.AddRoute:input_type -> sentinel.control.v1.AddRouteRequest
-	15, // 14: sentinel.control.v1.SentinelControl.RemoveRoute:input_type -> sentinel.control.v1.RemoveRouteRequest
-	4,  // 15: sentinel.control.v1.SentinelControl.ListServices:output_type -> sentinel.control.v1.ListServicesResponse
-	6,  // 16: sentinel.control.v1.SentinelControl.GetService:output_type -> sentinel.control.v1.GetServiceResponse
-	8,  // 17: sentinel.control.v1.SentinelControl.AddBackend:output_type -> sentinel.control.v1.AddBackendResponse
-	10, // 18: sentinel.control.v1.SentinelControl.RemoveBackend:output_type -> sentinel.control.v1.RemoveBackendResponse
-	12, // 19: sentinel.control.v1.SentinelControl.ListRoutes:output_type -> sentinel.control.v1.ListRoutesResponse
-	14, // 20: sentinel.control.v1.SentinelControl.AddRoute:output_type -> sentinel.control.v1.AddRouteResponse
-	16, // 21: sentinel.control.v1.SentinelControl.RemoveRoute:output_type -> sentinel.control.v1.RemoveRouteResponse
-	15, // [15:22] is the sub-list for method output_type
-	8,  // [8:15] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	19, // 8: sentinel.control.v1.ConfigResponse.snapshot:type_name -> sentinel.control.v1.ConfigSnapshot
+	0,  // 9: sentinel.control.v1.ConfigSnapshot.services:type_name -> sentinel.control.v1.Service
+	2,  // 10: sentinel.control.v1.ConfigSnapshot.routes:type_name -> sentinel.control.v1.Route
+	3,  // 11: sentinel.control.v1.SentinelControl.ListServices:input_type -> sentinel.control.v1.ListServicesRequest
+	5,  // 12: sentinel.control.v1.SentinelControl.GetService:input_type -> sentinel.control.v1.GetServiceRequest
+	7,  // 13: sentinel.control.v1.SentinelControl.AddBackend:input_type -> sentinel.control.v1.AddBackendRequest
+	9,  // 14: sentinel.control.v1.SentinelControl.RemoveBackend:input_type -> sentinel.control.v1.RemoveBackendRequest
+	11, // 15: sentinel.control.v1.SentinelControl.ListRoutes:input_type -> sentinel.control.v1.ListRoutesRequest
+	13, // 16: sentinel.control.v1.SentinelControl.AddRoute:input_type -> sentinel.control.v1.AddRouteRequest
+	15, // 17: sentinel.control.v1.SentinelControl.RemoveRoute:input_type -> sentinel.control.v1.RemoveRouteRequest
+	17, // 18: sentinel.control.v1.SentinelControl.StreamConfig:input_type -> sentinel.control.v1.ConfigRequest
+	4,  // 19: sentinel.control.v1.SentinelControl.ListServices:output_type -> sentinel.control.v1.ListServicesResponse
+	6,  // 20: sentinel.control.v1.SentinelControl.GetService:output_type -> sentinel.control.v1.GetServiceResponse
+	8,  // 21: sentinel.control.v1.SentinelControl.AddBackend:output_type -> sentinel.control.v1.AddBackendResponse
+	10, // 22: sentinel.control.v1.SentinelControl.RemoveBackend:output_type -> sentinel.control.v1.RemoveBackendResponse
+	12, // 23: sentinel.control.v1.SentinelControl.ListRoutes:output_type -> sentinel.control.v1.ListRoutesResponse
+	14, // 24: sentinel.control.v1.SentinelControl.AddRoute:output_type -> sentinel.control.v1.AddRouteResponse
+	16, // 25: sentinel.control.v1.SentinelControl.RemoveRoute:output_type -> sentinel.control.v1.RemoveRouteResponse
+	18, // 26: sentinel.control.v1.SentinelControl.StreamConfig:output_type -> sentinel.control.v1.ConfigResponse
+	19, // [19:27] is the sub-list for method output_type
+	11, // [11:19] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_proto_control_proto_init() }
@@ -929,7 +1085,7 @@ func file_proto_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_control_proto_rawDesc), len(file_proto_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

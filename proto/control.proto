@@ -14,6 +14,8 @@ service SentinelControl {
   rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
   rpc AddRoute(AddRouteRequest) returns (AddRouteResponse);
   rpc RemoveRoute(RemoveRouteRequest) returns (RemoveRouteResponse);
+
+  rpc StreamConfig(stream ConfigRequest) returns (stream ConfigResponse);
 }
 
 message Service {
@@ -83,3 +85,16 @@ message RemoveRouteRequest {
 }
 
 message RemoveRouteResponse {}
+
+message ConfigRequest {
+  string node_id = 1;
+}
+
+message ConfigResponse {
+  ConfigSnapshot snapshot = 1;
+}
+
+message ConfigSnapshot {
+  repeated Service services = 1;
+  repeated Route routes = 2;
+}

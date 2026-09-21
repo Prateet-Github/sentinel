@@ -26,6 +26,7 @@ const (
 	SentinelControl_ListRoutes_FullMethodName    = "/sentinel.control.v1.SentinelControl/ListRoutes"
 	SentinelControl_AddRoute_FullMethodName      = "/sentinel.control.v1.SentinelControl/AddRoute"
 	SentinelControl_RemoveRoute_FullMethodName   = "/sentinel.control.v1.SentinelControl/RemoveRoute"
+	SentinelControl_StreamConfig_FullMethodName  = "/sentinel.control.v1.SentinelControl/StreamConfig"
 )
 
 // SentinelControlClient is the client API for SentinelControl service.
@@ -39,6 +40,7 @@ type SentinelControlClient interface {
 	ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error)
 	AddRoute(ctx context.Context, in *AddRouteRequest, opts ...grpc.CallOption) (*AddRouteResponse, error)
 	RemoveRoute(ctx context.Context, in *RemoveRouteRequest, opts ...grpc.CallOption) (*RemoveRouteResponse, error)
+	StreamConfig(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConfigRequest, ConfigResponse], error)
 }
 
 type sentinelControlClient struct {
@@ -119,6 +121,19 @@ func (c *sentinelControlClient) RemoveRoute(ctx context.Context, in *RemoveRoute
 	return out, nil
 }
 
+func (c *sentinelControlClient) StreamConfig(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConfigRequest, ConfigResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &SentinelControl_ServiceDesc.Streams[0], SentinelControl_StreamConfig_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ConfigRequest, ConfigResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SentinelControl_StreamConfigClient = grpc.BidiStreamingClient[ConfigRequest, ConfigResponse]
+
 // SentinelControlServer is the server API for SentinelControl service.
 // All implementations must embed UnimplementedSentinelControlServer
 // for forward compatibility.
@@ -130,6 +145,7 @@ type SentinelControlServer interface {
 	ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error)
 	AddRoute(context.Context, *AddRouteRequest) (*AddRouteResponse, error)
 	RemoveRoute(context.Context, *RemoveRouteRequest) (*RemoveRouteResponse, error)
+	StreamConfig(grpc.BidiStreamingServer[ConfigRequest, ConfigResponse]) error
 	mustEmbedUnimplementedSentinelControlServer()
 }
 
@@ -160,6 +176,9 @@ func (UnimplementedSentinelControlServer) AddRoute(context.Context, *AddRouteReq
 }
 func (UnimplementedSentinelControlServer) RemoveRoute(context.Context, *RemoveRouteRequest) (*RemoveRouteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveRoute not implemented")
+}
+func (UnimplementedSentinelControlServer) StreamConfig(grpc.BidiStreamingServer[ConfigRequest, ConfigResponse]) error {
+	return status.Error(codes.Unimplemented, "method StreamConfig not implemented")
 }
 func (UnimplementedSentinelControlServer) mustEmbedUnimplementedSentinelControlServer() {}
 func (UnimplementedSentinelControlServer) testEmbeddedByValue()                         {}
@@ -308,6 +327,13 @@ func _SentinelControl_RemoveRoute_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SentinelControl_StreamConfig_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(SentinelControlServer).StreamConfig(&grpc.GenericServerStream[ConfigRequest, ConfigResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SentinelControl_StreamConfigServer = grpc.BidiStreamingServer[ConfigRequest, ConfigResponse]
+
 // SentinelControl_ServiceDesc is the grpc.ServiceDesc for SentinelControl service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -344,6 +370,13 @@ var SentinelControl_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SentinelControl_RemoveRoute_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamConfig",
+			Handler:       _SentinelControl_StreamConfig_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "proto/control.proto",
 }
