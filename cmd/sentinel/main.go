@@ -44,19 +44,17 @@ func main() {
 	}
 	defer controlClient.Close()
 
-	snapshot, err := controlClient.StreamConfig(
-		ctx,
-		"dp-1",
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
+	runtimeConfig := dataplane.NewRuntimeConfig()
 
-	log.Printf(
-		"received config: %d services, %d routes",
-		len(snapshot.GetServices()),
-		len(snapshot.GetRoutes()),
-	)
+	go func() {
+		if err := controlClient.StreamConfig(
+			ctx,
+			"dp-1",
+			runtimeConfig,
+		); err != nil {
+			log.Printf("control plane stream ended: %v", err)
+		}
+	}()
 
 	monitor := lb.NewHealthMonitor(
 		lb.NewHealthChecker(),

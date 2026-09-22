@@ -3,6 +3,7 @@ package dataplane
 import (
 	"context"
 	"fmt"
+	"log"
 
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
 	"google.golang.org/grpc"
@@ -35,28 +36,48 @@ func NewControlClient(
 func (c *ControlClient) StreamConfig(
 	ctx context.Context,
 	nodeID string,
-) (*controlv1.ConfigSnapshot, error) {
+	runtimeConfig *RuntimeConfig,
+) error {
 	stream, err := c.client.StreamConfig(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := stream.Send(&controlv1.ConfigRequest{
 		NodeId: nodeID,
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	response, err := stream.Recv()
-	if err != nil {
-		return nil, err
-	}
+	for {
+		response, err := stream.Recv()
+		if err != nil {
+			return err
+		}
 
-	if response.GetSnapshot() == nil {
-		return nil, fmt.Errorf("received empty config snapshot")
-	}
+		snapshot := response.GetSnapshot()
+		if snapshot == nil {
+			return fmt.Errorf("received empty config snapshot")
+		}
 
-	return response.GetSnapshot(), nil
+		runtimeConfig.Store(snapshot)
+
+		current := runtimeConfig.Load()
+
+		for _, service := range current.GetServices() {
+			log.Printf(
+				"service=%s backends=%d",
+				service.GetName(),
+				len(service.GetBackends()),
+			)
+		}
+
+		fmt.Printf(
+			"received config: %d services, %d routes\n",
+			len(snapshot.GetServices()),
+			len(snapshot.GetRoutes()),
+		)
+	}
 }
 
 func (c *ControlClient) Close() error {
