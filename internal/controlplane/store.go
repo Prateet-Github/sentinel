@@ -24,7 +24,8 @@ func NewStore(storage *Storage) *Store {
 
 func NewServer(store *Store) *Server {
 	return &Server{
-		store: store,
+		store:       store,
+		subscribers: make(map[string]chan *controlv1.ConfigSnapshot),
 	}
 }
 

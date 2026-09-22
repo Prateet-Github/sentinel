@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"log"
+	"sync"
 
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
 	"google.golang.org/grpc/codes"
@@ -12,6 +13,9 @@ import (
 type Server struct {
 	controlv1.UnimplementedSentinelControlServer
 	store *Store
+
+	mu          sync.RWMutex
+	subscribers map[string]chan *controlv1.ConfigSnapshot
 }
 
 func (s *Server) ListServices(
@@ -49,6 +53,8 @@ func (s *Server) AddBackend(
 		return nil, status.Error(codes.AlreadyExists, err.Error())
 	}
 
+	s.broadcast(s.store.Snapshot())
+
 	return &controlv1.AddBackendResponse{
 		Backend: backend,
 	}, nil
@@ -62,24 +68,66 @@ func (s *Server) StreamConfig(
 		return err
 	}
 
-	log.Printf("data plane connected: %s", req.GetNodeId())
+	nodeID := req.GetNodeId()
 
-	snapshot := s.store.Snapshot()
+	log.Printf("data plane connected: %s", nodeID)
 
+	ch := s.subscribe(nodeID)
+	defer s.unsubscribe(nodeID)
+
+	// send current configuration immediately
 	if err := stream.Send(&controlv1.ConfigResponse{
-		Snapshot: snapshot,
+		Snapshot: s.store.Snapshot(),
 	}); err != nil {
 		return err
 	}
 
-	// keep the stream alive
+	// wait for configuration updates
 	for {
-		if _, err := stream.Recv(); err != nil {
-			log.Printf(
-				"data plane disconnected: %s",
-				req.GetNodeId(),
-			)
-			return err
+		select {
+		case snapshot := <-ch:
+			if err := stream.Send(&controlv1.ConfigResponse{
+				Snapshot: snapshot,
+			}); err != nil {
+				return err
+			}
+
+		case <-stream.Context().Done():
+			log.Printf("data plane disconnected: %s", nodeID)
+			return stream.Context().Err()
+		}
+	}
+}
+
+func (s *Server) subscribe(nodeID string) chan *controlv1.ConfigSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ch := make(chan *controlv1.ConfigSnapshot, 1)
+	s.subscribers[nodeID] = ch
+
+	return ch
+}
+
+func (s *Server) unsubscribe(nodeID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if ch, exists := s.subscribers[nodeID]; exists {
+		close(ch)
+		delete(s.subscribers, nodeID)
+	}
+}
+
+func (s *Server) broadcast(snapshot *controlv1.ConfigSnapshot) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, ch := range s.subscribers {
+		select {
+		case ch <- snapshot:
+		default:
+			// Don't block the Control Plane if a DP hasn't consumed the previous update yet
 		}
 	}
 }
