@@ -21,12 +21,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	/*
-		Root context.
-
-		When SIGINT/SIGTERM is received, this context is
-		cancelled and the control-plane stream exits.
-	*/
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -78,19 +72,26 @@ func main() {
 	*/
 	log.Println("waiting for initial control plane configuration...")
 
-if err := runtimeConfig.WaitReady(ctx); err != nil {
-	log.Println("shutdown before initial control plane configuration")
-	return
-}
+	if err := runtimeConfig.WaitReady(ctx); err != nil {
+		log.Println("shutdown before initial control plane configuration")
+		return
+	}
 
-log.Println("initial control plane configuration received")
+	log.Println("initial control plane configuration received")
 
 	/*
 		Data Plane HTTP server.
 	*/
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", dp.HealthHandler)
+	mux.HandleFunc("/ready", dp.ReadyHandler)
+
+	mux.Handle("/", dp)
+
 	httpServer := &http.Server{
 		Addr:    ":8080",
-		Handler: dp,
+		Handler: mux,
 	}
 
 	/*
