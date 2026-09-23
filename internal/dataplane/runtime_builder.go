@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/Prateet-Github/sentinel/internal/core"
+	"github.com/Prateet-Github/sentinel/internal/lb"
+	"github.com/Prateet-Github/sentinel/internal/router"
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
 )
 
@@ -42,8 +44,13 @@ func BuildRuntimeState(
 		})
 	}
 
+	runtimeRouter := router.NewRadixRouter(cfg)
+	runtimeLoadBalancer := lb.BuildLoadBalancer(cfg)
+
 	return &RuntimeState{
-		Config: cfg,
+		Config:       cfg,
+		Router:       runtimeRouter,
+		LoadBalancer: runtimeLoadBalancer,
 	}, nil
 }
 
