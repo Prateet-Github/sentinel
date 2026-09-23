@@ -186,6 +186,89 @@ func (s *Storage) LoadBackends() (
 	return backends, nil
 }
 
+func (s *Storage) AddRoute(
+	route *controlv1.Route,
+) error {
+	_, err := s.db.Exec(
+		`INSERT INTO routes (
+			method,
+			path,
+			service_name
+		) VALUES (?, ?, ?)`,
+		route.GetMethod(),
+		route.GetPath(),
+		route.GetServiceName(),
+	)
+
+	return err
+}
+
+func (s *Storage) LoadRoutes() (
+	[]*controlv1.Route,
+	error,
+) {
+	rows, err := s.db.Query(`
+		SELECT
+			method,
+			path,
+			service_name
+		FROM routes
+		ORDER BY method, path
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	routes := make([]*controlv1.Route, 0)
+
+	for rows.Next() {
+		var (
+			method      string
+			path        string
+			serviceName string
+		)
+
+		if err := rows.Scan(
+			&method,
+			&path,
+			&serviceName,
+		); err != nil {
+			return nil, err
+		}
+
+		routes = append(
+			routes,
+			&controlv1.Route{
+				Method:      method,
+				Path:        path,
+				ServiceName: serviceName,
+			},
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return routes, nil
+}
+
+func (s *Storage) RemoveRoute(
+	method string,
+	path string,
+) error {
+	_, err := s.db.Exec(
+		`DELETE FROM routes
+		 WHERE method = ?
+		 AND path = ?`,
+		method,
+		path,
+	)
+
+	return err
+}
+
 func (s *Storage) Close() error {
 	return s.db.Close()
 }

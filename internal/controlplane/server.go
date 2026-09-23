@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 
 	controlv1 "github.com/Prateet-Github/sentinel/proto"
@@ -130,4 +131,67 @@ func (s *Server) broadcast(snapshot *controlv1.ConfigSnapshot) {
 			// Don't block the Control Plane if a DP hasn't consumed the previous update yet
 		}
 	}
+}
+
+func (s *Server) ListRoutes(
+	ctx context.Context,
+	req *controlv1.ListRoutesRequest,
+) (*controlv1.ListRoutesResponse, error) {
+	return &controlv1.ListRoutesResponse{
+		Routes: s.store.ListRoutes(),
+	}, nil
+}
+
+func (s *Server) AddRoute(
+	ctx context.Context,
+	req *controlv1.AddRouteRequest,
+) (*controlv1.AddRouteResponse, error) {
+	route, err := s.store.AddRoute(
+		req.GetRoute(),
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return nil, status.Error(
+				codes.AlreadyExists,
+				err.Error(),
+			)
+		}
+
+		if strings.Contains(err.Error(), "service") {
+			return nil, status.Error(
+				codes.NotFound,
+				err.Error(),
+			)
+		}
+
+		return nil, status.Error(
+			codes.Internal,
+			err.Error(),
+		)
+	}
+
+	s.broadcast(s.store.Snapshot())
+
+	return &controlv1.AddRouteResponse{
+		Route: route,
+	}, nil
+}
+
+func (s *Server) RemoveRoute(
+	ctx context.Context,
+	req *controlv1.RemoveRouteRequest,
+) (*controlv1.RemoveRouteResponse, error) {
+	if err := s.store.RemoveRoute(
+		req.GetMethod(),
+		req.GetPath(),
+	); err != nil {
+		return nil, status.Error(
+			codes.NotFound,
+			err.Error(),
+		)
+	}
+
+	s.broadcast(s.store.Snapshot())
+
+	return &controlv1.RemoveRouteResponse{}, nil
 }

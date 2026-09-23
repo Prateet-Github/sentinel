@@ -104,12 +104,24 @@ func (s *Store) Load() error {
 		return err
 	}
 
+	routes, err := s.storage.LoadRoutes()
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, service := range services {
 		service.Backends = backends[service.Name]
 		s.services[service.Name] = service
+	}
+
+	for _, route := range routes {
+		s.routes[routeKey(
+			route.GetMethod(),
+			route.GetPath(),
+		)] = route
 	}
 
 	return nil
@@ -135,4 +147,95 @@ func (s *Store) Snapshot() *controlv1.ConfigSnapshot {
 		Services: services,
 		Routes:   routes,
 	}
+}
+
+func (s *Store) ListRoutes() []*controlv1.Route {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	routes := make(
+		[]*controlv1.Route,
+		0,
+		len(s.routes),
+	)
+
+	for _, route := range s.routes {
+		routes = append(routes, route)
+	}
+
+	return routes
+}
+
+func (s *Store) AddRoute(
+	route *controlv1.Route,
+) (*controlv1.Route, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := routeKey(
+		route.GetMethod(),
+		route.GetPath(),
+	)
+
+	if _, exists := s.routes[key]; exists {
+		return nil, fmt.Errorf(
+			"route %s %s already exists",
+			route.GetMethod(),
+			route.GetPath(),
+		)
+	}
+
+	// Verify that the referenced service exists.
+	if _, exists := s.services[route.GetServiceName()]; !exists {
+		return nil, fmt.Errorf(
+			"service %q not found",
+			route.GetServiceName(),
+		)
+	}
+
+	// Persist first.
+	if err := s.storage.AddRoute(route); err != nil {
+		return nil, err
+	}
+
+	// Update memory only after persistence succeeds.
+	s.routes[key] = route
+
+	return route, nil
+}
+
+func (s *Store) RemoveRoute(
+	method string,
+	path string,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := routeKey(method, path)
+
+	if _, exists := s.routes[key]; !exists {
+		return fmt.Errorf(
+			"route %s %s not found",
+			method,
+			path,
+		)
+	}
+
+	if err := s.storage.RemoveRoute(
+		method,
+		path,
+	); err != nil {
+		return err
+	}
+
+	delete(s.routes, key)
+
+	return nil
+}
+
+func routeKey(
+	method string,
+	path string,
+) string {
+	return method + " " + path
 }
