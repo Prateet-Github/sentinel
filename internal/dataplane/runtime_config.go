@@ -1,6 +1,7 @@
 package dataplane
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 )
@@ -25,12 +26,17 @@ func (c *RuntimeConfig) Load() *RuntimeState {
 func (c *RuntimeConfig) Store(state *RuntimeState) {
 	c.current.Store(state)
 
-	// mark the runtime ready exactly once
 	c.once.Do(func() {
 		close(c.ready)
 	})
 }
 
-func (c *RuntimeConfig) WaitReady() {
-	<-c.ready
+func (c *RuntimeConfig) WaitReady(ctx context.Context) error {
+	select {
+	case <-c.ready:
+		return nil
+
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

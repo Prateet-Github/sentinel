@@ -1,6 +1,7 @@
 package dataplane
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -8,10 +9,13 @@ import (
 func TestRuntimeConfigWaitReadyBlocksUntilStore(t *testing.T) {
 	runtimeConfig := NewRuntimeConfig()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	ready := make(chan struct{})
 
 	go func() {
-		runtimeConfig.WaitReady()
+		_ = runtimeConfig.WaitReady(ctx)
 		close(ready)
 	}()
 
@@ -35,10 +39,12 @@ func TestRuntimeConfigWaitReadyBlocksUntilStore(t *testing.T) {
 func TestRuntimeConfigWaitReadyUnblocksAfterStore(t *testing.T) {
 	runtimeConfig := NewRuntimeConfig()
 
+	ctx := context.Background()
+
 	done := make(chan struct{})
 
 	go func() {
-		runtimeConfig.WaitReady()
+		_ = runtimeConfig.WaitReady(ctx)
 		close(done)
 	}()
 
@@ -49,6 +55,35 @@ func TestRuntimeConfigWaitReadyUnblocksAfterStore(t *testing.T) {
 		// expected
 	case <-time.After(time.Second):
 		t.Fatal("WaitReady did not unblock after Store")
+	}
+}
+
+func TestRuntimeConfigWaitReadyReturnsOnContextCancellation(t *testing.T) {
+	runtimeConfig := NewRuntimeConfig()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- runtimeConfig.WaitReady(ctx)
+	}()
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatalf(
+				"expected context.Canceled, got %v",
+				err,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal(
+			"WaitReady did not return after context cancellation",
+		)
 	}
 }
 
@@ -67,7 +102,9 @@ func TestRuntimeConfigMultipleStoresDoNotPanic(t *testing.T) {
 		t.Fatal("expected latest runtime state to be stored")
 	}
 
-	runtimeConfig.WaitReady()
+	if err := runtimeConfig.WaitReady(context.Background()); err != nil {
+		t.Fatalf("WaitReady returned error: %v", err)
+	}
 }
 
 func TestRuntimeConfigLastRuntimeStateRemainsAvailable(t *testing.T) {
@@ -88,7 +125,9 @@ func TestRuntimeConfigLastRuntimeStateRemainsAvailable(t *testing.T) {
 		t.Fatal("expected second runtime state")
 	}
 
-	runtimeConfig.WaitReady()
+	if err := runtimeConfig.WaitReady(context.Background()); err != nil {
+		t.Fatalf("WaitReady returned error: %v", err)
+	}
 
 	if got := runtimeConfig.Load(); got != second {
 		t.Fatal("expected latest runtime state to remain available")
