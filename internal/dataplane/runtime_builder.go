@@ -12,23 +12,21 @@ func BuildRuntimeState(
 ) (*RuntimeState, error) {
 	cfg := &core.Config{}
 
+	// service to backend pool
 	for _, service := range snapshot.GetServices() {
 		for _, backend := range service.GetBackends() {
 			cfg.Backends = append(cfg.Backends, core.Backend{
 				Name:            backend.GetName(),
+				Service:         service.GetName(),
 				URL:             backend.GetUrl(),
 				HealthCheckPath: backend.GetHealthCheckPath(),
 			})
 		}
 	}
 
+	// routes to service/backend pool
 	for _, route := range snapshot.GetRoutes() {
-		service := findService(
-			snapshot.GetServices(),
-			route.GetServiceName(),
-		)
-
-		if service == nil {
+		if findService(snapshot.GetServices(), route.GetServiceName()) == nil {
 			return nil, fmt.Errorf(
 				"route %s %s references unknown service %q",
 				route.GetMethod(),
@@ -37,13 +35,11 @@ func BuildRuntimeState(
 			)
 		}
 
-		for _, backend := range service.GetBackends() {
-			cfg.Routes = append(cfg.Routes, core.Route{
-				Method:  route.GetMethod(),
-				Path:    route.GetPath(),
-				Backend: backend.GetName(),
-			})
-		}
+		cfg.Routes = append(cfg.Routes, core.Route{
+			Method:  route.GetMethod(),
+			Path:    route.GetPath(),
+			Backend: route.GetServiceName(),
+		})
 	}
 
 	return &RuntimeState{
