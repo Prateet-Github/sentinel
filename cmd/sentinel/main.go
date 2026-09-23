@@ -48,7 +48,14 @@ func main() {
 		}
 	}()
 
+	log.Println("waiting for initial control plane configuration...")
+
+	runtimeConfig.WaitReady()
+
+	log.Println("initial control plane configuration received")
+
 	log.Printf("Sentinel listening on :%d", cfg.Server.Port)
 
 	log.Fatal(http.ListenAndServe(":8080", dp))
+
 }
