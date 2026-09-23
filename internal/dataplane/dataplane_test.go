@@ -18,11 +18,27 @@ import (
 	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
+func newTestDataplane(
+	cfg *core.Config,
+	r *router.RadixRouter,
+	loadBalancer *lb.LoadBalancer,
+) *Dataplane {
+	runtimeConfig := NewRuntimeConfig()
+
+	runtimeConfig.Store(&RuntimeState{
+		Config:       cfg,
+		Router:       r,
+		LoadBalancer: loadBalancer,
+	})
+
+	return New(runtimeConfig, cfg)
+}
+
 func TestDataplaneParameterPropagation(t *testing.T) {
 	cfg := &core.Config{
 		Routes: []core.Route{
 			{
-				Method:  "GET",
+				Method:  http.MethodGet,
 				Path:    "/users/:id",
 				Backend: "users",
 			},
@@ -30,23 +46,6 @@ func TestDataplaneParameterPropagation(t *testing.T) {
 	}
 
 	r := router.NewRadixRouter(cfg)
-
-	// backend := &core.Backend{
-	// 	Name: "users",
-	// 	URL:  "http://localhost:9000",
-	// }
-
-	// pool := lb.NewBackendPool([]*core.Backend{
-	// 	backend,
-	// })
-
-	// loadBalancer := lb.NewLoadBalancer(
-	// 	map[string]*lb.BackendPool{
-	// 		"users": pool,
-	// 	},
-	// )
-
-	// dp := New(r, loadBalancer, cfg)
 
 	var params router.Params
 
@@ -81,7 +80,7 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 	cfg := &core.Config{
 		Routes: []core.Route{
 			{
-				Method:  "GET",
+				Method:  http.MethodGet,
 				Path:    "/users",
 				Backend: "users",
 			},
@@ -92,20 +91,22 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 
 	backends := []*core.Backend{
 		{
-			Name: "users",
-			URL:  "http://localhost:9000",
+			Name:    "users-1",
+			Service: "users",
+			URL:     "http://localhost:9000",
 		},
 	}
 
-	pool := lb.NewBackendPool(backends, lb.DefaultCircuitBreakerConfig())
+	pool := lb.NewBackendPool(
+		backends,
+		lb.DefaultCircuitBreakerConfig(),
+	)
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
 			"users": pool,
 		},
 	)
-
-	dp := New(r, loadBalancer, cfg)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -133,8 +134,6 @@ func BenchmarkDataplaneStatic(b *testing.B) {
 		if !ok {
 			b.Fatal("backend pool not found")
 		}
-
-		_ = dp
 	}
 }
 
@@ -142,7 +141,7 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 	cfg := &core.Config{
 		Routes: []core.Route{
 			{
-				Method:  "GET",
+				Method:  http.MethodGet,
 				Path:    "/users/:id",
 				Backend: "users",
 			},
@@ -151,12 +150,16 @@ func BenchmarkDataplaneParameter(b *testing.B) {
 
 	r := router.NewRadixRouter(cfg)
 
-	pool := lb.NewBackendPool([]*core.Backend{
-		{
-			Name: "users",
-			URL:  "http://localhost:9000",
+	pool := lb.NewBackendPool(
+		[]*core.Backend{
+			{
+				Name:    "users-1",
+				Service: "users",
+				URL:     "http://localhost:9000",
+			},
 		},
-	}, lb.DefaultCircuitBreakerConfig())
+		lb.DefaultCircuitBreakerConfig(),
+	)
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -199,7 +202,7 @@ func BenchmarkDataplaneMiss(b *testing.B) {
 	cfg := &core.Config{
 		Routes: []core.Route{
 			{
-				Method:  "GET",
+				Method:  http.MethodGet,
 				Path:    "/users",
 				Backend: "users",
 			},
@@ -280,15 +283,20 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 	poolBackends := make([]*core.Backend, 0, len(servers))
 
 	for i, server := range servers {
-		poolBackends = append(poolBackends, &core.Backend{
-			Name: "users-service",
-			URL:  server.URL,
-		})
-
-		_ = i
+		poolBackends = append(
+			poolBackends,
+			&core.Backend{
+				Name:    backends[i].name,
+				Service: "users-service",
+				URL:     server.URL,
+			},
+		)
 	}
 
-	pool := lb.NewBackendPool(poolBackends, lb.DefaultCircuitBreakerConfig())
+	pool := lb.NewBackendPool(
+		poolBackends,
+		lb.DefaultCircuitBreakerConfig(),
+	)
 
 	loadBalancer := lb.NewLoadBalancer(
 		map[string]*lb.BackendPool{
@@ -296,7 +304,11 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	want := []string{
 		"backend-1",
@@ -341,14 +353,14 @@ func TestDataplaneLoadBalancing(t *testing.T) {
 }
 
 func TestCircuitBreakerIntegration(t *testing.T) {
-	backendRequests := 0
-	backendHealthy := false
+	var backendRequests atomic.Int32
+	var backendHealthy atomic.Bool
 
 	backend := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			backendRequests++
+			backendRequests.Add(1)
 
-			if !backendHealthy {
+			if !backendHealthy.Load() {
 				http.Error(
 					w,
 					"backend failure",
@@ -358,9 +370,10 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("backend recovered"))
+			_, _ = w.Write([]byte("backend recovered"))
 		}),
 	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -378,8 +391,9 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				Name: "users-service",
-				URL:  backend.URL,
+				Name:    "users-1",
+				Service: "users-service",
+				URL:     backend.URL,
 			},
 		},
 		lb.CircuitBreakerConfig{
@@ -394,7 +408,11 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest(
@@ -417,10 +435,10 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		}
 	}
 
-	if backendRequests != 3 {
+	if got := backendRequests.Load(); got != 3 {
 		t.Fatalf(
 			"backend requests = %d, want 3",
-			backendRequests,
+			got,
 		)
 	}
 
@@ -442,21 +460,17 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		)
 	}
 
-	if backendRequests != 3 {
+	if got := backendRequests.Load(); got != 3 {
 		t.Fatalf(
 			"backend was called after circuit opened: got %d requests, want 3",
-			backendRequests,
+			got,
 		)
 	}
 
-	// Backend recovers while the circuit is open
-	backendHealthy = true
+	backendHealthy.Store(true)
 
-	// Wait for the circuit reset timeout
 	time.Sleep(60 * time.Millisecond)
 
-	// This request should be the single Half-Open probe
-	// The backend is healthy now, so the circuit should close
 	req = httptest.NewRequest(
 		http.MethodGet,
 		"/users",
@@ -475,15 +489,13 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		)
 	}
 
-	if backendRequests != 4 {
+	if got := backendRequests.Load(); got != 4 {
 		t.Fatalf(
 			"backend requests after recovery probe = %d, want 4",
-			backendRequests,
+			got,
 		)
 	}
 
-	// The circuit should now be Closed, so normal requests
-	// should reach the backend again
 	req = httptest.NewRequest(
 		http.MethodGet,
 		"/users",
@@ -502,22 +514,22 @@ func TestCircuitBreakerIntegration(t *testing.T) {
 		)
 	}
 
-	if backendRequests != 5 {
+	if got := backendRequests.Load(); got != 5 {
 		t.Fatalf(
 			"backend requests after circuit closed = %d, want 5",
-			backendRequests,
+			got,
 		)
 	}
 }
 
 func TestDataplaneRetryIntegration(t *testing.T) {
-	backendRequests := 0
+	var backendRequests atomic.Int32
 
 	backend := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			backendRequests++
+			requestNumber := backendRequests.Add(1)
 
-			if backendRequests < 3 {
+			if requestNumber < 3 {
 				http.Error(
 					w,
 					"temporary failure",
@@ -530,6 +542,7 @@ func TestDataplaneRetryIntegration(t *testing.T) {
 			_, _ = w.Write([]byte("success"))
 		}),
 	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -547,8 +560,9 @@ func TestDataplaneRetryIntegration(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				Name: "users-service",
-				URL:  backend.URL,
+				Name:    "users-1",
+				Service: "users-service",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -560,7 +574,11 @@ func TestDataplaneRetryIntegration(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -588,10 +606,10 @@ func TestDataplaneRetryIntegration(t *testing.T) {
 		)
 	}
 
-	if backendRequests != 3 {
+	if got := backendRequests.Load(); got != 3 {
 		t.Fatalf(
 			"backend requests = %d, want 3",
-			backendRequests,
+			got,
 		)
 	}
 }
@@ -603,31 +621,41 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 		receivedBodies  []string
 	)
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		backendRequests++
-		requestNumber := backendRequests
-		mu.Unlock()
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			backendRequests++
+			requestNumber := backendRequests
+			mu.Unlock()
 
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		t.Logf("backend attempt %d: body=%q", requestNumber, string(body))
+			t.Logf(
+				"backend attempt %d: body=%q",
+				requestNumber,
+				string(body),
+			)
 
-		mu.Lock()
-		receivedBodies = append(receivedBodies, string(body))
-		mu.Unlock()
+			mu.Lock()
+			receivedBodies = append(
+				receivedBodies,
+				string(body),
+			)
+			mu.Unlock()
 
-		if requestNumber == 1 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
+			if requestNumber == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
 
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success"))
-	}))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("success"))
+		}),
+	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -644,7 +672,9 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 
 	backends := []*core.Backend{
 		{
-			URL: backend.URL,
+			Name:    "users-1",
+			Service: "users",
+			URL:     backend.URL,
 		},
 	}
 
@@ -659,7 +689,11 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	body := []byte("hello")
 
@@ -670,18 +704,25 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 	)
 
 	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(body)), nil
+		return io.NopCloser(
+			bytes.NewReader(body),
+		), nil
 	}
-
-	// t.Logf("GetBody available: %v", req.GetBody != nil)
 
 	rec := httptest.NewRecorder()
 
 	dp.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Logf("response body: %q", rec.Body.String())
-		t.Fatalf("expected status 200, got %d", rec.Code)
+		t.Logf(
+			"response body: %q",
+			rec.Body.String(),
+		)
+
+		t.Fatalf(
+			"expected status 200, got %d",
+			rec.Code,
+		)
 	}
 
 	if rec.Body.String() != "success" {
@@ -724,27 +765,30 @@ func TestDataplaneRetryRequestBodyReplay(t *testing.T) {
 func TestDataplaneRetryNetworkError(t *testing.T) {
 	var backendRequests atomic.Int32
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestNumber := backendRequests.Add(1)
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestNumber := backendRequests.Add(1)
 
-		if requestNumber == 1 {
-			hijacker, ok := w.(http.Hijacker)
-			if !ok {
-				t.Fatal("response writer does not support hijacking")
+			if requestNumber == 1 {
+				hijacker, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("response writer does not support hijacking")
+				}
+
+				conn, _, err := hijacker.Hijack()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				_ = conn.Close()
+				return
 			}
 
-			conn, _, err := hijacker.Hijack()
-			if err != nil {
-				t.Fatal(err)
-			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("success"))
+		}),
+	)
 
-			_ = conn.Close()
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success"))
-	}))
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -762,7 +806,9 @@ func TestDataplaneRetryNetworkError(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				URL: backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -774,7 +820,11 @@ func TestDataplaneRetryNetworkError(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -813,12 +863,15 @@ func TestDataplaneRetryNetworkError(t *testing.T) {
 func TestDataplaneRetryExhaustion(t *testing.T) {
 	var backendRequests atomic.Int32
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		backendRequests.Add(1)
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendRequests.Add(1)
 
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte("temporary failure"))
-	}))
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("temporary failure"))
+		}),
+	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -836,7 +889,9 @@ func TestDataplaneRetryExhaustion(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				URL: backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -848,7 +903,11 @@ func TestDataplaneRetryExhaustion(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -879,10 +938,13 @@ func TestDataplaneRetryExhaustion(t *testing.T) {
 func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 	var backendRequests atomic.Int32
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		backendRequests.Add(1)
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendRequests.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}),
+	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -900,7 +962,9 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				URL: backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -912,9 +976,12 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
-	// One logical request exhausts all 3 retry attempts
 	req := httptest.NewRequest(
 		http.MethodGet,
 		"/users",
@@ -939,7 +1006,6 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 		)
 	}
 
-	// Two more logical failures should open the breaker
 	for i := 0; i < 2; i++ {
 		req := httptest.NewRequest(
 			http.MethodGet,
@@ -960,9 +1026,6 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 		}
 	}
 
-	// First request = 3 attempts
-	// Second request = 3 attempts
-	// Third request = 3 attempts
 	if got := backendRequests.Load(); got != 9 {
 		t.Fatalf(
 			"expected 9 backend attempts before breaker opens, got %d",
@@ -970,7 +1033,6 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 		)
 	}
 
-	// The fourth logical request must be blocked by the OPEN breaker
 	req = httptest.NewRequest(
 		http.MethodGet,
 		"/users",
@@ -988,7 +1050,6 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 		)
 	}
 
-	// Backend must not receive another request
 	if got := backendRequests.Load(); got != 9 {
 		t.Fatalf(
 			"expected backend attempts to remain at 9, got %d",
@@ -1000,10 +1061,13 @@ func TestCircuitBreakerCountsRetryExhaustionAsOneFailure(t *testing.T) {
 func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 	var backendRequests atomic.Int32
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		backendRequests.Add(1)
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
+	backend := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendRequests.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}),
+	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -1021,7 +1085,9 @@ func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				URL: backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -1033,9 +1099,12 @@ func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
-	// Open the breaker with 3 logical failures.
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest(
 			http.MethodGet,
@@ -1049,10 +1118,12 @@ func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 	}
 
 	if got := backendRequests.Load(); got != 9 {
-		t.Fatalf("expected 9 backend attempts, got %d", got)
+		t.Fatalf(
+			"expected 9 backend attempts, got %d",
+			got,
+		)
 	}
 
-	// Breaker is now OPEN.
 	req := httptest.NewRequest(
 		http.MethodGet,
 		"/users",
@@ -1070,8 +1141,6 @@ func TestCircuitBreakerOpenPreventsRetry(t *testing.T) {
 		)
 	}
 
-	// Most important assertion:
-	// OPEN breaker prevented the request from entering retry/proxy
 	if got := backendRequests.Load(); got != 9 {
 		t.Fatalf(
 			"expected no additional backend attempts, got %d",
@@ -1089,6 +1158,7 @@ func TestDataplaneRateLimit(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	)
+
 	defer backend.Close()
 
 	backendURL, err := url.Parse(backend.URL)
@@ -1116,8 +1186,9 @@ func TestDataplaneRateLimit(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				Name: "users",
-				URL:  backendURL.String(),
+				Name:    "users-1",
+				Service: "users",
+				URL:     backendURL.String(),
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -1129,7 +1200,11 @@ func TestDataplaneRateLimit(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	for i := 0; i < 100; i++ {
 		req := httptest.NewRequest(
@@ -1189,6 +1264,7 @@ func TestDataplaneRateLimitDisabled(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -1211,8 +1287,9 @@ func TestDataplaneRateLimitDisabled(t *testing.T) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				Name: "users",
-				URL:  backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -1224,7 +1301,11 @@ func TestDataplaneRateLimitDisabled(t *testing.T) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	for i := 0; i < 10; i++ {
 		req := httptest.NewRequest(
@@ -1262,6 +1343,7 @@ func BenchmarkDataplaneRateLimitFull(b *testing.B) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	)
+
 	defer backend.Close()
 
 	cfg := &core.Config{
@@ -1284,8 +1366,9 @@ func BenchmarkDataplaneRateLimitFull(b *testing.B) {
 	pool := lb.NewBackendPool(
 		[]*core.Backend{
 			{
-				Name: "users",
-				URL:  backend.URL,
+				Name:    "users-1",
+				Service: "users",
+				URL:     backend.URL,
 			},
 		},
 		lb.DefaultCircuitBreakerConfig(),
@@ -1297,7 +1380,11 @@ func BenchmarkDataplaneRateLimitFull(b *testing.B) {
 		},
 	)
 
-	dp := New(r, loadBalancer, cfg)
+	dp := newTestDataplane(
+		cfg,
+		r,
+		loadBalancer,
+	)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -1316,7 +1403,10 @@ func BenchmarkDataplaneRateLimitFull(b *testing.B) {
 		dp.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			b.Fatalf("expected 200, got %d", rec.Code)
+			b.Fatalf(
+				"expected 200, got %d",
+				rec.Code,
+			)
 		}
 	}
 }

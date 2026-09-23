@@ -5,12 +5,9 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"time"
 
 	"github.com/Prateet-Github/sentinel/internal/config"
 	"github.com/Prateet-Github/sentinel/internal/dataplane"
-	"github.com/Prateet-Github/sentinel/internal/lb"
-	"github.com/Prateet-Github/sentinel/internal/router"
 )
 
 func main() {
@@ -23,13 +20,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	r := router.NewRadixRouter(cfg)
-
-	loadBalancer := lb.BuildLoadBalancer(cfg)
+	runtimeConfig := dataplane.NewRuntimeConfig()
 
 	dp := dataplane.New(
-		r,
-		loadBalancer,
+		runtimeConfig,
 		cfg,
 	)
 
@@ -44,8 +38,6 @@ func main() {
 	}
 	defer controlClient.Close()
 
-	runtimeConfig := dataplane.NewRuntimeConfig()
-
 	go func() {
 		if err := controlClient.StreamConfig(
 			ctx,
@@ -55,16 +47,6 @@ func main() {
 			log.Printf("control plane stream ended: %v", err)
 		}
 	}()
-
-	monitor := lb.NewHealthMonitor(
-		lb.NewHealthChecker(),
-		5*time.Second,
-	)
-
-	monitor.StartAll(
-		context.Background(),
-		loadBalancer,
-	)
 
 	log.Printf("Sentinel listening on :%d", cfg.Server.Port)
 

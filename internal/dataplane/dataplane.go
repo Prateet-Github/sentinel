@@ -14,21 +14,19 @@ import (
 )
 
 type Dataplane struct {
-	router    router.Router
-	lb        *lb.LoadBalancer
+	runtimeConfig *RuntimeConfig
+
 	retry     *retry.Executor
 	limit     *ratelimiter.RateLimiter
 	rateLimit bool
 }
 
 func New(
-	router router.Router,
-	lb *lb.LoadBalancer,
+	runtimeConfig *RuntimeConfig,
 	config *core.Config,
 ) *Dataplane {
 	return &Dataplane{
-		router: router,
-		lb:     lb,
+		runtimeConfig: runtimeConfig,
 		retry: retry.NewExecutor(
 			retry.DefaultPolicy(),
 			retry.FullJitterBackoff{
@@ -45,10 +43,25 @@ func New(
 }
 
 func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	runtime := p.runtimeConfig.Load()
+
+	if runtime == nil {
+		http.Error(
+			w,
+			"runtime configuration unavailable",
+			http.StatusServiceUnavailable,
+		)
+		return
+	}
 
 	var params router.Params
 
-	route, ok := p.matchRoute(w, r, &params)
+	route, ok := p.matchRoute(
+		w,
+		runtime.Router,
+		r,
+		&params,
+	)
 	if !ok {
 		return
 	}
@@ -64,7 +77,11 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	selection, ok := p.resolveBackend(w, route)
+	selection, ok := p.resolveBackend(
+		w,
+		runtime.LoadBalancer,
+		route,
+	)
 	if !ok {
 		return
 	}
@@ -74,11 +91,16 @@ func (p *Dataplane) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (p *Dataplane) matchRoute(
 	w http.ResponseWriter,
+	runtimeRouter router.Router,
 	r *http.Request,
 	params *router.Params,
 ) (*core.Route, bool) {
 
-	route, ok := p.router.Match(r.Method, r.URL.Path, params)
+	route, ok := runtimeRouter.Match(
+		r.Method,
+		r.URL.Path,
+		params,
+	)
 	if !ok {
 		http.NotFound(w, r)
 		return nil, false
@@ -89,10 +111,11 @@ func (p *Dataplane) matchRoute(
 
 func (p *Dataplane) resolveBackend(
 	w http.ResponseWriter,
+	runtimeLB *lb.LoadBalancer,
 	route *core.Route,
 ) (lb.BackendSelection, bool) {
 
-	pool, ok := p.lb.Get(route.Backend)
+	pool, ok := runtimeLB.Get(route.Backend)
 	if !ok {
 		http.Error(
 			w,
