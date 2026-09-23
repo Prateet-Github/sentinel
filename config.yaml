@@ -7,59 +7,62 @@ rate_limit:
   refill_rate: 100
 
 backends:
-  - name: users-service
+  - name: users-1
+    service: users
     url: http://127.0.0.1:9000
     health_check_path: /health
 
-  - name: users-service
+  - name: users-2
+    service: users
     url: http://127.0.0.1:9001
     health_check_path: /health
 
-  - name: users-service
+  - name: users-3
+    service: users
     url: http://127.0.0.1:9002
     health_check_path: /health
 
 routes:
   - method: GET
     path: /users
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /users/profile
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /users/settings
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /users/orders
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /orders
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /orders/history
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /products
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /products/latest
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /health
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /users/:id
-    backend: users-service
+    backend: users
 
   - method: GET
     path: /files/*path
-    backend: users-service
+    backend: users

@@ -60,25 +60,20 @@ func (c *ControlClient) StreamConfig(
 			return fmt.Errorf("received empty config snapshot")
 		}
 
-		runtimeState := BuildRuntimeState(snapshot)
+		runtimeState, err := BuildRuntimeState(snapshot)
+		if err != nil {
+			return fmt.Errorf("build runtime state: %w", err)
+		}
 
 		runtimeConfig.Store(runtimeState)
 
 		current := runtimeConfig.Load()
 
 		log.Printf(
-			"runtime config updated: %d services, %d routes",
-			len(current.Config.GetServices()),
-			len(current.Config.GetRoutes()),
+			"runtime config updated: %d routes, %d backends",
+			len(current.Config.Routes),
+			len(current.Config.Backends),
 		)
-
-		for _, service := range current.Config.GetServices() {
-			log.Printf(
-				"service=%s backends=%d",
-				service.GetName(),
-				len(service.GetBackends()),
-			)
-		}
 
 		fmt.Printf(
 			"received config: %d services, %d routes\n",

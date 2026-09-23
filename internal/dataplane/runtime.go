@@ -1,17 +1,9 @@
 package dataplane
 
 import (
-	controlv1 "github.com/Prateet-Github/sentinel/proto"
+	"github.com/Prateet-Github/sentinel/internal/core"
 )
 
 type RuntimeState struct {
-	Config *controlv1.ConfigSnapshot
-}
-
-func BuildRuntimeState(
-	snapshot *controlv1.ConfigSnapshot,
-) *RuntimeState {
-	return &RuntimeState{
-		Config: snapshot,
-	}
+	Config       *core.Config
 }

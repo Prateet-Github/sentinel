@@ -176,10 +176,26 @@ func TestLoadBalancerEmpty(t *testing.T) {
 func TestBuildLoadBalancer(t *testing.T) {
 	cfg := &core.Config{
 		Backends: []core.Backend{
-			{Name: "users-service", URL: "http://127.0.0.1:9000"},
-			{Name: "users-service", URL: "http://127.0.0.1:9001"},
-			{Name: "users-service", URL: "http://127.0.0.1:9002"},
-			{Name: "orders-service", URL: "http://127.0.0.1:9100"},
+			{
+				Name:    "users-1",
+				Service: "users-service",
+				URL:     "http://127.0.0.1:9000",
+			},
+			{
+				Name:    "users-2",
+				Service: "users-service",
+				URL:     "http://127.0.0.1:9001",
+			},
+			{
+				Name:    "users-3",
+				Service: "users-service",
+				URL:     "http://127.0.0.1:9002",
+			},
+			{
+				Name:    "orders-1",
+				Service: "orders-service",
+				URL:     "http://127.0.0.1:9100",
+			},
 		},
 	}
 

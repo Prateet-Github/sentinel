@@ -12,8 +12,8 @@ func BuildLoadBalancer(cfg *core.Config) *LoadBalancer {
 	for i := range cfg.Backends {
 		backend := &cfg.Backends[i]
 
-		grouped[backend.Name] = append(
-			grouped[backend.Name],
+		grouped[backend.Service] = append(
+			grouped[backend.Service],
 			backend,
 		)
 	}
