@@ -1,4 +1,4 @@
-```markdown
+
 # Sentinel
 
 **Sentinel** is a high-performance, lightweight distributed edge platform and reverse proxy written in Go.
@@ -827,7 +827,3 @@ The objective is to make Sentinel **correct first, measurable second, and faster
 ## License
 
 License information will be added as the project is finalized.
-
-```
-
-```
