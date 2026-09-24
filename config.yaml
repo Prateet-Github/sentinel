@@ -2,7 +2,7 @@ server:
   port: 8080
 
 rate_limit:
-  enabled: true
+  enabled: false
   capacity: 100
   refill_rate: 100
 

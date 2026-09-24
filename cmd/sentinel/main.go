@@ -35,9 +35,8 @@ func main() {
 		cfg,
 	)
 
-	/*
-		Control Plane client.
-	*/
+	// Control Plane client
+
 	controlClient, err := dataplane.NewControlClient(
 		ctx,
 		"localhost:9090",
@@ -47,12 +46,8 @@ func main() {
 	}
 	defer controlClient.Close()
 
-	/*
-		Start Control Plane stream.
+	//	Start Control Plane stream
 
-		The goroutine exits automatically when the root
-		context is cancelled.
-	*/
 	go func() {
 		if err := controlClient.StreamConfig(
 			ctx,
@@ -66,10 +61,6 @@ func main() {
 		}
 	}()
 
-	/*
-		Do not expose the HTTP dataplane until the first
-		valid Control Plane snapshot has been received.
-	*/
 	log.Println("waiting for initial control plane configuration...")
 
 	if err := runtimeConfig.WaitReady(ctx); err != nil {
@@ -79,9 +70,8 @@ func main() {
 
 	log.Println("initial control plane configuration received")
 
-	/*
-		Data Plane HTTP server.
-	*/
+	//	Data Plane HTTP server
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", dp.HealthHandler)
@@ -94,19 +84,15 @@ func main() {
 		Handler: mux,
 	}
 
-	/*
-		pprof server.
+	//	pprof server
 
-		Kept separate from the dataplane server.
-	*/
 	pprofServer := &http.Server{
 		Addr:    "localhost:6060",
 		Handler: http.DefaultServeMux,
 	}
 
-	/*
-		Start pprof.
-	*/
+	//	Start pprof
+
 	go func() {
 		log.Println("pprof listening on localhost:6060")
 
@@ -119,9 +105,8 @@ func main() {
 		}
 	}()
 
-	/*
-		Start Data Plane.
-	*/
+	//	Start Data Plane
+
 	go func() {
 		log.Printf(
 			"Sentinel listening on :%d",
@@ -137,25 +122,18 @@ func main() {
 		}
 	}()
 
-	/*
-		Wait for shutdown signal.
-	*/
+	//	Wait for shutdown signal.
+
 	<-ctx.Done()
 
 	log.Println("shutdown signal received")
 
-	/*
-		Give active HTTP requests time to finish.
-	*/
 	shutdownCtx, cancel := context.WithTimeout(
 		context.Background(),
 		5*time.Second,
 	)
 	defer cancel()
 
-	/*
-		Stop accepting new dataplane requests.
-	*/
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf(
 			"data plane shutdown error: %v",
@@ -163,9 +141,8 @@ func main() {
 		)
 	}
 
-	/*
-		Stop pprof.
-	*/
+	//	Stop pprof
+
 	if err := pprofServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf(
 			"pprof shutdown error: %v",
@@ -173,12 +150,6 @@ func main() {
 		)
 	}
 
-	/*
-		The root context cancellation has already caused
-		the Control Plane stream to stop.
-
-		Close the gRPC connection explicitly.
-	*/
 	if err := controlClient.Close(); err != nil {
 		log.Printf(
 			"control client close error: %v",
