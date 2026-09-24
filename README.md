@@ -1,104 +1,171 @@
+```markdown
 # Sentinel
 
-**Sentinel** is a high-performance, lightweight edge platform and reverse proxy written in Go.
+**Sentinel** is a high-performance, lightweight distributed edge platform and reverse proxy written in Go.
 
-It is designed around a fast data-plane request path with routing, rate limiting, load balancing, circuit breaking, retries, health checking, and proxying.
+It is built around a fast Data Plane request path with routing, rate limiting, load balancing, health checking, circuit breaking, retries, and reverse proxying.
 
-The current focus is building a **correct, measurable, and high-performance Data Plane** before moving on to distributed control-plane functionality.
+The project is developed incrementally with a focus on **correctness, measurable performance, concurrency safety, and system-level engineering**.
 
 ---
 
 ## Architecture
 
-The current Sentinel Data Plane follows this request path:
+The current architecture separates the **Data Plane** from the **Control Plane**.
 
 ```text
-                         Sentinel
+                         SENTINEL
                             │
-Client ────────────────────▼
-                     ┌─────────────┐
-                     │    Router   │
-                     └──────┬──────┘
-                            │
-                     ┌──────▼──────┐
-                     │ Rate Limiter│
-                     └──────┬──────┘
-                            │
-                     ┌──────▼──────┐
-                     │Load Balancer│
-                     └──────┬──────┘
-                            │
-                     ┌──────▼──────┐
-                     │   Circuit   │
-                     │   Breaker   │
-                     └──────┬──────┘
-                            │
-                     ┌──────▼──────┐
-                     │    Retry    │
-                     │    Engine   │
-                     └──────┬──────┘
-                            │
-                     ┌──────▼──────┐
-                     │    Proxy    │
-                     └──────┬──────┘
-                            │
-                    ┌───────▼───────┐
-                    │    Backend    │
-                    └───────────────┘
+             ┌──────────────┴──────────────┐
+             │                             │
+        CONTROL PLANE                 DATA PLANE
+        Source of Truth              Live Traffic
+             │                             │
+          SQLite                    Runtime Config
+             │                             │
+             │                    ┌────────▼────────┐
+             │                    │     Router      │
+             │                    └────────┬────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │   Rate Limiter   │
+             │                    └────────┬──────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │  Load Balancer   │
+             │                    └────────┬──────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │ Circuit Breaker  │
+             │                    └────────┬──────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │  Retry Engine    │
+             │                    └────────┬──────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │ Reverse Proxy    │
+             │                    └────────┬──────────┘
+             │                             │
+             │                    ┌────────▼─────────┐
+             │                    │     Backend      │
+             │                    └──────────────────┘
+             │
+             └──────────── gRPC Streaming ────────────►
+
 ```
+
+The Data Plane is designed so that the HTTP hot path does not perform Control Plane network, database, or disk operations.
 
 ---
 
-# Features
+## Features
 
-## Radix Router
+* **High-performance HTTP routing**
+* Radix-tree router
+* Parameterized routes
+
+
+* **Per-client token-bucket rate limiting**
+* Atomic CAS-based rate limiting
+
+
+* **Round Robin load balancing**
+* **Least Connections load balancing**
+* **Power of Two Choices load balancing**
+* **Active HTTP/TCP health checking**
+* **Circuit breaker**
+* Half-open recovery probing
+
+
+* **Retry engine**
+* Exponential backoff
+* Full-jitter retry strategy
+* Request-body replay safety
+
+
+* **Reverse proxying**
+* **gRPC-based Control Plane**
+* Dynamic runtime configuration
+* SQLite persistence
+* Automatic Control Plane reconnection
+
+
+* **Graceful shutdown**
+* **Health and readiness endpoints**
+* **CPU and memory profiling with `pprof**`
+* **Unit, integration, concurrency, race, and benchmark testing**
+
+---
+
+## Data Plane
+
+The Data Plane handles live HTTP traffic.
+
+The request lifecycle is:
+
+```text
+Client
+  │
+  ▼
+Router
+  │
+  ▼
+Rate Limiter
+  │
+  ▼
+Load Balancer
+  │
+  ▼
+Circuit Breaker
+  │
+  ▼
+Retry Engine
+  │
+  ▼
+Reverse Proxy
+  │
+  ▼
+Backend
+
+```
+
+The hot path is intentionally kept independent of the Control Plane.
+
+### Radix Router
 
 Sentinel uses a radix-tree based router for efficient HTTP route matching.
 
-### Features
+Supported routing includes:
 
-- Static routes
-- Parameterized routes
-- Fast lookup
-- Low allocation overhead
+* `/users`
+* `/users/:id`
+* `/videos/:id`
+* `/files/*`
+
+The router is designed for:
+
+* Fast lookups
+* Low allocations
+* Parameter extraction
+* Wildcard matching
+* Concurrent request processing
+
+### Rate Limiter
+
+Sentinel implements a per-client **Token Bucket** rate limiter.
 
 Example:
-
-```text
-/users
-/users/:id
-/videos/:id
-```
-
-The router is designed to keep the request path lightweight and minimize allocations.
-
----
-
-## Rate Limiter
-
-Sentinel implements a **per-client Token Bucket rate limiter**.
-
-Each client receives an independent bucket with configurable:
-
-- Capacity
-- Refill rate
-
-Example configuration:
 
 ```yaml
 rate_limit:
   enabled: true
   capacity: 100
   refill_rate: 100
+
 ```
 
-### Implementation
-
-The token bucket state is updated using **atomic Compare-And-Swap (CAS)**.
-
-This keeps the token bucket's hot path lock-free.
-
-A `sync.Mutex` protects the per-client bucket map during bucket lookup and creation.
+The token bucket uses atomic Compare-And-Swap operations on the hot path.
 
 ```text
 Client
@@ -114,193 +181,123 @@ Atomic CAS
    │
    ▼
 Allow / Reject
+
 ```
 
-Requests that exceed the configured limit receive:
+Requests exceeding the configured limit receive:
+`HTTP 429 Too Many Requests`
 
-```text
-HTTP 429 Too Many Requests
-```
+#### Current Scope
 
-### Current limitation
+The rate limiter is instance-local. Multiple Sentinel instances therefore maintain independent token state. Distributed rate limiting using shared state or coordination is planned for a future stage.
 
-The current rate limiter is **instance-local**.
+### Load Balancing
 
-For example:
+Sentinel supports multiple backend-selection strategies:
 
-```text
-                    Load Balancer
-                   /              \
-                  /                \
-                 ▼                  ▼
-          Sentinel A           Sentinel B
-          Bucket A             Bucket B
-```
+* **Round Robin**
+* **Least Connections**
+* **Power of Two Choices**
 
-Both Sentinel instances maintain independent token state.
+The selection layer is concurrency-safe and designed to keep backend selection lightweight.
 
-Therefore, if multiple Sentinel instances are running behind a load balancer, the configured limit is not currently a globally shared limit.
+Round Robin provides a simple baseline:
 
-Distributed rate limiting using shared state or coordination is planned for a future stage.
+* Request 1 → Backend A
+* Request 2 → Backend B
+* Request 3 → Backend C
+* Request 4 → Backend A
 
----
+Different strategies can be benchmarked under different backend workloads rather than assuming one strategy is universally optimal.
 
-## Load Balancer
-
-Sentinel currently uses **Round Robin** backend selection.
-
-```text
-Request 1 → Backend A
-Request 2 → Backend B
-Request 3 → Backend C
-Request 4 → Backend A
-Request 5 → Backend B
-```
-
-The implementation uses atomic state for concurrent backend selection.
-
-### Why Round Robin?
-
-Round Robin was selected initially to establish a simple, predictable, low-overhead baseline.
-
-It provides:
-
-- O(1) backend selection
-- Minimal state
-- Low coordination overhead
-- Good concurrency characteristics
-- A clean performance baseline
-
-More advanced strategies such as **Least Connections** can be evaluated during the Data Plane optimization phase.
-
-Least Connections may perform better when backend request durations or workloads are uneven, but it also requires maintaining and evaluating active-connection state.
-
-The goal is to benchmark these trade-offs rather than assume one strategy is universally better.
-
----
-
-## Health Checker
+### Health Checking
 
 Sentinel continuously checks backend health.
 
-The health checker:
+Health checking supports:
 
-1. Performs HTTP health checks.
-2. Falls back to TCP connectivity when appropriate.
-3. Tracks backend health.
-4. Prevents unhealthy backends from receiving traffic.
-
-Health checking operates independently from the request retry mechanism.
+* HTTP health checks
+* TCP fallback
+* Backend health tracking
+* Removal of unhealthy backends from traffic selection
 
 ```text
-              ┌───────────────┐
-              │ Health Checker│
-              └───────┬───────┘
-                      │
-             ┌────────┼────────┐
-             ▼        ▼        ▼
-          Backend A Backend B Backend C
-             │        │        │
-             ▼        ▼        ▼
-           Healthy  Unhealthy Healthy
+             Health Checker
+                   │
+          ┌────────┼────────┐
+          ▼        ▼        ▼
+       Backend A Backend B Backend C
+          │        │        │
+          ▼        ▼        ▼
+       Healthy  Unhealthy Healthy
+
 ```
 
----
+Health checking operates independently from request retries.
 
-## Circuit Breaker
+### Circuit Breaker
 
-Sentinel implements a circuit breaker to prevent repeatedly sending traffic to failing backends.
-
-The circuit breaker has three states:
+Sentinel implements a three-state circuit breaker:
 
 ```text
-                 Failure Threshold
-                       │
-                       ▼
-                  ┌────────┐
-             ┌───►│ CLOSED │
-             │    └────┬───┘
-             │         │
-             │         │ failures
-             │         ▼
-             │    ┌────────┐
-             │    │  OPEN  │
-             │    └────┬───┘
-             │         │
-             │         │ timeout
-             │         ▼
-             │   ┌───────────┐
-             └───│ HALF-OPEN │
-                 └─────┬─────┘
-                       │
-                       │ successful probe
-                       ▼
-                    CLOSED
+              failures
+                 │
+                 ▼
+             ┌────────┐
+        ┌───►│ CLOSED │
+        │    └────┬───┘
+        │         │
+        │         ▼
+        │    ┌────────┐
+        │    │  OPEN  │
+        │    └────┬───┘
+        │         │
+        │       timeout
+        │         ▼
+        │   ┌───────────┐
+        └───│ HALF-OPEN │
+            └─────┬─────┘
+                  │
+             successful
+                probe
+                  │
+                  ▼
+               CLOSED
+
 ```
-
-### States
-
-- **CLOSED** — normal traffic flows.
-- **OPEN** — requests are blocked from the failing backend.
-- **HALF-OPEN** — a limited recovery probe is allowed.
 
 The circuit breaker supports:
 
-- Failure thresholds
-- Recovery timeout
-- Half-open state
-- Single concurrent recovery probe
+* Failure thresholds
+* Recovery timeout
+* Half-open state
+* Single concurrent recovery probe
 
-The circuit breaker records the outcome of the **logical request**, rather than treating every retry attempt as a separate request.
+The breaker evaluates the outcome of the **logical request**, rather than treating every retry attempt as an independent request.
 
----
+### Retry Engine
 
-## Retry Engine
+Sentinel supports retries for transient upstream failures.
 
-Sentinel supports configurable retries for transient upstream failures.
+Retryable HTTP status codes include:
 
-### Retryable HTTP Status Codes
+* `502 Bad Gateway`
+* `503 Service Unavailable`
+* `504 Gateway Timeout`
 
-```text
-502 Bad Gateway
-503 Service Unavailable
-504 Gateway Timeout
-```
+By default, retries are enabled for methods considered safe or replayable:
 
-### Retryable Methods
+* `GET`
+* `HEAD`
+* `OPTIONS`
+* `PUT`
+* `DELETE`
 
-By default:
+Methods such as `POST` and `PATCH` are not retried by default. Retryable network failures are also supported for eligible requests.
 
-```text
-GET
-HEAD
-OPTIONS
-PUT
-DELETE
-```
+#### Retry + Circuit Breaker
 
-Methods such as:
-
-```text
-POST
-PATCH
-```
-
-are not retried by default.
-
-This avoids automatically replaying potentially non-idempotent operations.
-
-### Network Errors
-
-Retryable network errors are also supported when the request method is eligible for retry.
-
----
-
-## Retry + Circuit Breaker
-
-Retries and the circuit breaker work together.
-
-The request flow is:
+Retries and circuit breaking operate together:
 
 ```text
 Circuit Breaker
@@ -310,92 +307,85 @@ Circuit Breaker
       │
       ▼
    Backend
+
 ```
 
-A single logical request may result in multiple upstream attempts.
+A logical request may result in multiple upstream attempts. The circuit breaker evaluates the overall logical request outcome instead of counting every retry attempt separately. Retries remain associated with the selected backend.
 
-The circuit breaker evaluates the overall logical request outcome instead of counting every retry attempt independently.
+#### Exponential Backoff + Full Jitter
 
-Retries remain associated with the selected backend rather than selecting a different backend for every attempt.
-
----
-
-## Exponential Backoff
-
-Retries use exponential backoff with **Full Jitter**.
+Retry delays use exponential backoff with full jitter.
 
 Conceptually:
 
-```text
-Attempt 1 → random delay within Base
-Attempt 2 → random delay within 2 × Base
-Attempt 3 → random delay within 4 × Base
-Attempt 4 → random delay within 8 × Base
-...
-```
+* **Attempt 1** → random delay within Base
+* **Attempt 2** → random delay within $2 \times \text{Base}$
+* **Attempt 3** → random delay within $4 \times \text{Base}$
+* **Attempt 4** → random delay within $8 \times \text{Base}$
 
-The delay is capped by a configured maximum.
+The delay is capped by a configured maximum. Full jitter reduces synchronized retry bursts when multiple clients encounter failures simultaneously.
 
-Full jitter helps prevent multiple clients from retrying simultaneously and creating another load spike.
+#### Request Body Replay Safety
 
----
+Sentinel does not blindly retry requests whose bodies have already been consumed. A request is retried only when its body can safely be replayed.
 
-## Request Body Replay Safety
+This prevents retries from receiving:
 
-Sentinel does not blindly retry requests whose request bodies have already been consumed.
-
-A request is retried only when its body can safely be replayed.
-
-This prevents retry attempts from receiving:
-
-- Empty bodies
-- Partially consumed bodies
-- Invalid request payloads
-
-This is particularly important when implementing retries around HTTP request streams.
+* Empty bodies
+* Partially consumed bodies
+* Invalid payloads
 
 ---
 
-# Data Plane
+## Control Plane
 
-The Data Plane is the primary completed part of Sentinel.
+The Control Plane provides configuration management and distribution to Data Plane nodes.
 
-Its responsibility is to process live traffic as efficiently and reliably as possible.
-
-The current request lifecycle is:
+The current architecture uses:
 
 ```text
-Incoming Request
-       │
-       ▼
-     Router
-       │
-       ▼
- Rate Limiter
-       │
-       ▼
- Load Balancer
-       │
-       ▼
-Circuit Breaker
-       │
-       ▼
- Retry Engine
-       │
-       ▼
-     Proxy
-       │
-       ▼
-   Upstream
+                 CONTROL PLANE
+                       │
+                    SQLite
+                       │
+                 In-Memory Store
+                       │
+                gRPC Streaming
+                       │
+                       ▼
+                  DATA PLANE
+                       │
+               Runtime Config
+                       │
+                atomic.Pointer
+
 ```
 
-Each component has a focused responsibility.
+### Responsibilities
+
+* Service management
+* Backend management
+* Route management
+* Persistent configuration
+* Configuration snapshots
+* Runtime configuration distribution
+
+The Data Plane maintains its last-known configuration when the Control Plane becomes temporarily unavailable. It automatically reconnects using exponential backoff.
+
+> **Important Design Principle**
+> The Data Plane HTTP hot path does **not** access:
+> * SQLite
+> * Control Plane network calls
+> * Configuration storage
+> 
+> 
+> Runtime configuration is held in memory and updated atomically.
 
 ---
 
-# Configuration
+## Configuration
 
-Sentinel currently uses YAML configuration.
+Sentinel supports YAML configuration for local Data Plane settings.
 
 Example:
 
@@ -415,221 +405,237 @@ routes:
 backends:
   - name: users
     url: http://localhost:9001
+
 ```
 
-Configuration is loaded at startup and used to initialize the Data Plane components.
+Control Plane managed configuration is distributed dynamically to Data Plane nodes.
 
 ---
 
-# Performance
+## Performance
 
-Performance is a core design goal of Sentinel.
+Performance is a core engineering goal of Sentinel. The project uses:
 
-The project uses:
+* Go benchmarks
+* Allocation measurements
+* End-to-end load testing
+* CPU profiling
+* Memory profiling
+* `pprof`
+* Race detection
+* Concurrency testing
 
-- Go benchmarks
-- Allocation measurements
-- Race detection
-- End-to-end benchmarks
-- CPU profiling
-- Memory profiling
-- `pprof`
+The philosophy is:
 
-The goal is to measure before optimizing.
 
----
+$$\text{Measure} \longrightarrow \text{Profile} \longrightarrow \text{Identify Bottleneck} \longrightarrow \text{Optimize} \longrightarrow \text{Benchmark Again}$$
 
-## Router Benchmark
+### Router Benchmark
 
-One of the router benchmarks produced approximately:
+An internal router benchmark on an Apple M2 produced approximately:
+
+* **~22 ns/op**
+* **0 B/op**
+* **0 allocs/op**
+
+Example benchmark output:
 
 ```text
-BenchmarkHashMapRouter-8
-53,357,709        22.16 ns/op
-0 B/op
-0 allocs/op
+BenchmarkHashMapRouter-8    53357709    22.16 ns/op    0 B/op    0 allocs/op
+
 ```
 
-This was measured on an Apple M2.
+*These numbers represent an isolated routing component and should not be interpreted as complete HTTP request latency.*
 
-Exact numbers will vary depending on hardware and benchmark conditions.
+### Rate Limiter Benchmark
 
----
+The token bucket benchmark produced approximately:
 
-## Rate Limiter Benchmark
-
-The current token bucket benchmark on an Apple M2 produced approximately:
-
-```text
-~60 ns/op
-0 B/op
-0 allocs/op
-```
+* **~60 ns/op**
+* **0 B/op**
+* **0 allocs/op**
 
 A concurrent benchmark produced approximately:
 
-```text
-~140 ns/op
-```
+* **~140 ns/op**
 
-These measurements represent the limiter component rather than the entire HTTP request path.
+*These measurements represent the rate limiter itself rather than the complete Data Plane.*
+
+### End-to-End Data Plane Benchmark
+
+A complete Data Plane benchmark using a real local HTTP backend produced approximately:
+
+* **~35.8 µs/op**
+
+*This includes HTTP proxying and transport overhead. It therefore should not be directly compared with the nanosecond-level internal component benchmarks. The purpose of this benchmark is to measure the cost of the complete request path.*
+
+### Load Test
+
+A `wrk` load test against a local backend produced:
+
+* **8 threads**
+* **100 concurrent connections**
+* **30 seconds**
+* **~52K requests/sec**
+* **1.98 ms average latency**
+* **1.61 ms median latency**
+* **8.30 ms p99 latency**
+* **~1.55M requests**
+
+*Measured on an Apple M2. Exact results vary with hardware, operating system, backend behavior, connection count, and system load.*
 
 ---
 
-## Full Data Plane Benchmark
+## Profiling
 
-A full Data Plane benchmark using a real local HTTP backend produced approximately:
-
-```text
-~35.8 µs/op
-```
-
-This benchmark includes HTTP proxying and transport overhead.
-
-Therefore, it should not be directly compared with the nanosecond-level internal component benchmarks.
-
-The purpose of the end-to-end benchmark is to understand the cost of the complete request path.
-
----
-
-# Profiling
-
-Sentinel exposes Go's `pprof` endpoints during development.
+Sentinel exposes Go `pprof` endpoints during development.
 
 The profiling server runs on:
+`localhost:6060`
 
-```text
-localhost:6060
-```
-
-Example CPU profiling command:
+CPU profiling:
 
 ```bash
 go tool pprof http://localhost:6060/debug/pprof/profile
+
 ```
 
-Profiling will be used to identify actual bottlenecks before making performance changes.
+Heap profiling:
+
+```bash
+go tool pprof http://localhost:6060/debug/pprof/heap
+
+```
+
+Profiling is used to identify actual bottlenecks before making performance changes.
 
 ---
 
-# Testing
+## Testing
 
 Sentinel includes:
 
-- Unit tests
-- Integration tests
-- Concurrent tests
-- Race-detector tests
-- Benchmarks
+* Unit tests
+* Integration tests
+* Concurrency tests
+* Race-detector tests
+* Benchmarks
+* Control Plane/Data Plane tests
 
-## Run all tests
+Run all tests:
 
 ```bash
 go test ./...
+
 ```
 
-## Run race detector
+Run race detection:
 
 ```bash
 go test -race ./...
+
 ```
 
-## Run all benchmarks
+Run benchmarks:
 
 ```bash
 go test -bench=. -benchmem ./...
+
 ```
 
-## Run a specific package benchmark
+Run router benchmarks:
 
 ```bash
 go test -bench=. -benchmem ./internal/router
+
 ```
 
 ---
 
-# Concurrency
+## Concurrency
 
-Sentinel is designed to operate safely under concurrent workloads.
+Sentinel is designed for concurrent workloads.
 
 Concurrency-sensitive components include:
 
-- Router
-- Load balancer
-- Rate limiter
-- Circuit breaker
-- Health checker
-- Retry engine
+* Router
+* Load balancer
+* Rate limiter
+* Circuit breaker
+* Health checker
+* Retry engine
+* Runtime configuration
+* Control Plane subscriptions
 
-The project uses Go's concurrency primitives and atomic operations where appropriate.
-
-Race detection is part of the development workflow:
+Atomic operations and synchronization primitives are used where appropriate. Race detection is part of the development workflow:
 
 ```bash
 go test -race ./...
+
 ```
 
 ---
 
-# Design Principles
+## Design Principles
 
-## 1. Measure Before Optimizing
+### 1. Measure Before Optimizing
 
-Performance decisions should be backed by:
+Performance decisions should be supported by:
 
-- Benchmarks
-- Profiling
-- Allocation measurements
-- Concurrency testing
+* Benchmarks
+* Profiling
+* Allocation measurements
+* Load testing
+* Concurrency testing
 
-The goal is to optimize based on actual bottlenecks rather than assumptions.
+### 2. Keep the Hot Path Simple
+
+The request path should minimize unnecessary:
+
+* Locks
+* Allocations
+* Memory copies
+* Coordination
+* External dependencies
+
+### 3. Correctness Before Micro-Optimization
+
+Performance improvements must preserve:
+
+* Routing correctness
+* Rate-limit behavior
+* Load-balancing behavior
+* Retry semantics
+* Circuit-breaker semantics
+* Request-body safety
+* Concurrency safety
+
+### 4. Clear Component Boundaries
+
+Routing, rate limiting, load balancing, health checking, circuit breaking, retries, and proxying are implemented as separate components.
+
+This makes each subsystem easier to:
+
+* Test
+* Benchmark
+* Profile
+* Replace
+* Optimize
+
+### 5. No Premature Distributed Complexity
+
+Sentinel is being built incrementally.
+
+The approach is:
+
+
+$$\text{Build} \longrightarrow \text{Test} \longrightarrow \text{Benchmark} \longrightarrow \text{Profile} \longrightarrow \text{Optimize} \longrightarrow \text{Scale}$$
+
+Distributed functionality is introduced only after the underlying Data Plane is understood and measurable.
 
 ---
 
-## 2. Keep the Hot Path Simple
-
-The request path should avoid unnecessary:
-
-- Locks
-- Allocations
-- Memory copies
-- Coordination
-- Background work
-
-Where appropriate, atomic operations are used instead of heavier synchronization.
-
----
-
-## 3. Correctness Before Micro-Optimization
-
-A faster component that produces incorrect traffic behavior is not an optimization.
-
-Every performance improvement must preserve:
-
-- Routing correctness
-- Rate-limit behavior
-- Load-balancing behavior
-- Retry semantics
-- Circuit-breaker behavior
-- Request-body safety
-- Concurrency safety
-
----
-
-## 4. Components Should Have Clear Responsibilities
-
-Routing, rate limiting, load balancing, retries, circuit breaking, health checking, and proxying are implemented as separate components.
-
-This makes them:
-
-- Easier to test
-- Easier to benchmark
-- Easier to profile
-- Easier to replace or improve
-
----
-
-# Project Structure
+## Project Structure
 
 ```text
 sentinel/
@@ -639,49 +645,48 @@ sentinel/
 │   │   └── main.go
 │   │
 │   └── sentinel-control/
+│       └── main.go
 │
 ├── internal/
 │   ├── config/
-│   │
 │   ├── core/
-│   │
 │   ├── dataplane/
-│   │
+│   ├── controlplane/
 │   ├── router/
-│   │
 │   ├── ratelimiter/
-│   │
 │   ├── lb/
-│   │
 │   ├── health/
-│   │
 │   ├── circuitbreaker/
-│   │
 │   ├── retry/
-│   │
 │   └── proxy/
 │
+├── proto/
+│   ├── control.proto
+│   ├── control.pb.go
+│   └── control_grpc.pb.go
+│
 ├── configs/
+│
+├── benchmarks/
 │
 ├── go.mod
 ├── go.sum
 ├── Makefile
 └── README.md
-```
 
-The internal package structure may evolve as the project is optimized.
+```
 
 ---
 
-# Current Data Plane Status
+## Current Status
 
 | Component | Status |
-|---|---|
+| --- | --- |
 | Project Foundation | ✅ Complete |
 | Configuration | ✅ Complete |
 | Radix Router | ✅ Complete |
-| Load Balancer | ✅ Complete |
-| Health Checker | ✅ Complete |
+| Load Balancing | ✅ Complete |
+| Health Checking | ✅ Complete |
 | Circuit Breaker | ✅ Complete |
 | Retry Engine | ✅ Complete |
 | Exponential Backoff | ✅ Complete |
@@ -689,304 +694,140 @@ The internal package structure may evolve as the project is optimized.
 | Request Body Replay Safety | ✅ Complete |
 | Rate Limiter V1 | ✅ Complete |
 | Data Plane Integration | ✅ Complete |
+| Control Plane | ✅ Complete |
+| gRPC Streaming | ✅ Complete |
+| SQLite Persistence | ✅ Complete |
+| Dynamic Runtime Configuration | ✅ Complete |
+| Automatic Reconnection | ✅ Complete |
+| Graceful Shutdown | ✅ Complete |
+| Health / Readiness | ✅ Complete |
 | Unit Tests | ✅ Complete |
 | Integration Tests | ✅ Complete |
-| Concurrent Tests | ✅ Complete |
 | Race Detection | ✅ Complete |
-| Initial Benchmarks | ✅ Complete |
-| Data Plane | ✅ Complete |
+| Benchmarking | ✅ Complete |
+| Initial Profiling | ✅ Complete |
+
+### Current Focus
+
+Sentinel is currently **feature-complete for the current architecture**.
+
+The next phase is **Data Plane performance engineering**.
+
+Planned optimization work includes:
+
+* CPU profiling
+* Memory profiling
+* Allocation analysis
+* HTTP transport optimization
+* Reverse-proxy optimization
+* Router optimization
+* Rate limiter overhead analysis
+* Load-balancer strategy benchmarking
+* GC pressure analysis
+* Concurrency tuning
+* End-to-end latency optimization
+
+The goal is to improve performance based on measured bottlenecks rather than premature micro-optimization.
 
 ---
 
-# Current Focus
+## Future Work
 
-The Data Plane is functionally complete for the current milestone.
-
-The next phase is:
-
-## Data Plane Optimization
-
-Planned areas include:
-
-- Router profiling
-- Router optimization
-- Load-balancer benchmarking
-- Round Robin vs Least Connections
-- Rate limiter overhead
-- Allocation reduction
-- GC pressure
-- HTTP proxy performance
-- Concurrency behavior
-- End-to-end latency
-- CPU profiling
-- Memory profiling
-- Benchmark-driven optimization
-
-The goal is to improve Sentinel's performance while preserving correctness and maintainability.
-
----
-
-# Control Plane
-
-The Control Plane is **not currently implemented**.
-
-It is intentionally postponed until the Data Plane has been optimized and benchmarked.
-
-The future Control Plane is expected to handle management and configuration rather than live request processing.
-
-Potential responsibilities include:
+Potential future areas include:
 
 ```text
-Configuration Management
+Performance Optimization
         │
         ▼
-Route Management
+Advanced Observability
+        │
+        ├── Metrics
+        └── Tracing
         │
         ▼
-Backend Management
+Service Discovery
         │
         ▼
-Node Management
+Distributed Rate Limiting
+        │
+        ▼
+Advanced Control Plane
         │
         ▼
 Configuration Distribution
+        │
+        ▼
+Larger-Scale Distributed Edge
+
 ```
 
-Future work may include:
-
-- Centralized configuration
-- Route management
-- Backend management
-- Node registration
-- Configuration distribution
-- Persistent configuration
-- Dynamic configuration
-- Distributed control
-
-These features will be implemented in later stages.
+*These are future directions rather than requirements for the current milestone.*
 
 ---
 
-# Observability
+## Technology Stack
 
-Advanced observability is intentionally separated from the current Data Plane milestone.
-
-Future observability work may include:
-
-- Metrics
-- Request metrics
-- Backend metrics
-- Rate-limit metrics
-- Circuit-breaker metrics
-- Retry metrics
-- Tracing
-- Distributed tracing
-- Advanced profiling
-
-The current priority is to establish a strong performance baseline before adding additional instrumentation.
+* **Go**
+* **net/http**
+* **gRPC**
+* **Protocol Buffers**
+* **SQLite**
+* **YAML**
+* Atomic operations
+* Go concurrency primitives
+* Go benchmarking
+* Go race detector
+* Go `pprof`
+* Docker for development/testing
 
 ---
 
-# Roadmap
+## Why Sentinel?
 
-```text
-                    SENTINEL
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   DATA PLANE    │
-              └────────┬────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-       Routing     Traffic      Fault
-                   Control     Tolerance
-          │            │            │
-          ▼            ▼            ▼
-       Router      Rate Limit   Circuit Breaker
-                   Load Balance    Retry
-                                  Health
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   OPTIMIZATION  │
-              └────────┬────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-      Benchmark     Profiling   Allocations
-          │            │            │
-          └────────────┼────────────┘
-                       ▼
-              Performance Tuning
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   OBSERVABILITY │
-              └────────┬────────┘
-                       │
-               ┌───────┴───────┐
-               ▼               ▼
-            Metrics         Tracing
-               │               │
-               └───────┬───────┘
-                       ▼
-              ┌─────────────────┐
-              │  CONTROL PLANE  │
-              └────────┬────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-       Routes       Backends      Nodes
-          │            │            │
-          └────────────┼────────────┘
-                       ▼
-              Config Distribution
-                       │
-                       ▼
-                Distributed Edge
-```
+Sentinel is an engineering project focused on understanding how high-performance edge infrastructure works internally.
 
-### Completed
+It explores:
 
-```text
-[x] Project foundation
-[x] Configuration
-[x] Radix Router
-[x] Load Balancer
-[x] Health Checker
-[x] Circuit Breaker
-[x] Retry Engine
-[x] Exponential Backoff
-[x] Full Jitter
-[x] Request Body Replay Safety
-[x] Rate Limiter V1
-[x] Data Plane Integration
-[x] Testing
-[x] Race Detection
-[x] Initial Benchmarking
-```
+* HTTP networking
+* Routing
+* Load balancing
+* Rate limiting
+* Fault tolerance
+* Retry behavior
+* Circuit breaking
+* Backend health
+* Concurrency
+* Reverse proxying
+* Distributed configuration
+* Performance engineering
 
-### Current
-
-```text
-[ ] Data Plane Optimization
-[ ] Performance Profiling
-[ ] Allocation Optimization
-[ ] Load Balancer Strategy Benchmarking
-[ ] End-to-End Optimization
-```
-
-### Future
-
-```text
-[ ] Metrics
-[ ] Tracing
-[ ] Service Discovery
-[ ] Dynamic Configuration
-[ ] Advanced Observability
-[ ] Control Plane
-[ ] Route Management
-[ ] Backend Management
-[ ] Node Management
-[ ] Configuration Distribution
-[ ] Persistent Configuration
-[ ] Distributed Rate Limiting
-```
+The project prioritizes understanding the system from the inside out rather than simply assembling existing infrastructure components.
 
 ---
 
-# Technology Stack
+## Development Philosophy
 
-- **Go**
-- `net/http`
-- YAML
-- Atomic operations
-- Go concurrency primitives
-- Go benchmarking
-- Go race detector
-- Go `pprof`
-- Docker for development/testing where required
+Every major feature follows an engineering loop:
+
+$$\text{Design} \longrightarrow \text{Implement} \longrightarrow \text{Test} \longrightarrow \text{Concurrency Test} \longrightarrow \text{Race Detection} \longrightarrow \text{Benchmark} \longrightarrow \text{Profile} \longrightarrow \text{Optimize}$$
+
+The objective is to make Sentinel **correct first, measurable second, and faster through evidence-driven optimization**.
 
 ---
 
-# Why Sentinel?
+## Status
 
-Sentinel is an engineering-focused project for exploring how high-performance edge infrastructure and traffic-management systems work internally.
-
-The project focuses on:
-
-- High-performance HTTP routing
-- Rate limiting
-- Load balancing
-- Backend health
-- Circuit breaking
-- Retry behavior
-- Fault tolerance
-- Concurrency
-- Performance engineering
-- Distributed system architecture
-
-Rather than introducing distributed complexity immediately, Sentinel is being built incrementally.
-
-The current approach is:
-
-```text
-Build
-  ↓
-Test
-  ↓
-Benchmark
-  ↓
-Profile
-  ↓
-Optimize
-  ↓
-Scale
-```
-
-The goal is to understand the performance and correctness characteristics of each layer before moving to the next stage.
+* **Sentinel:** Feature Complete
+* **Current Phase:** Data Plane Performance Optimization
+* **Control Plane:** Implemented
+* **Next Goal:** Profile $\rightarrow$ Identify Bottlenecks $\rightarrow$ Optimize $\rightarrow$ Benchmark Again
 
 ---
 
-# Development Philosophy
-
-Sentinel is intentionally being built incrementally.
-
-Each major feature follows the same general process:
-
-```text
-Design
-  ↓
-Implement
-  ↓
-Test
-  ↓
-Concurrency Test
-  ↓
-Race Detection
-  ↓
-Benchmark
-  ↓
-Profile
-  ↓
-Optimize
-```
-
-The project prioritizes **measurable engineering decisions** over prematurely adding complexity.
-
----
-
-# Status
-
-**Sentinel Data Plane: Functionally Complete**
-
-**Current Phase: Data Plane Optimization**
-
-**Control Plane: Planned**
-
----
-
-# License
+## License
 
 License information will be added as the project is finalized.
+
+```
+
+```
