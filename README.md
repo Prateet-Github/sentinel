@@ -7,6 +7,8 @@ It is built around a fast Data Plane request path with routing, rate limiting, l
 
 The project is developed incrementally with a focus on **correctness, measurable performance, concurrency safety, and system-level engineering**.
 
+![sentinel_v1](assets/ss/sentinel_v1.jpeg)
+
 ---
 
 ## Architecture
