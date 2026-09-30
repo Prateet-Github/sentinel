@@ -67,10 +67,8 @@ The Data Plane is designed so that the HTTP hot path does not perform Control Pl
 * Radix-tree router
 * Parameterized routes
 
-
 * **Per-client token-bucket rate limiting**
 * Atomic CAS-based rate limiting
-
 
 * **Round Robin load balancing**
 * **Least Connections load balancing**
@@ -79,19 +77,16 @@ The Data Plane is designed so that the HTTP hot path does not perform Control Pl
 * **Circuit breaker**
 * Half-open recovery probing
 
-
 * **Retry engine**
 * Exponential backoff
 * Full-jitter retry strategy
 * Request-body replay safety
-
 
 * **Reverse proxying**
 * **gRPC-based Control Plane**
 * Dynamic runtime configuration
 * SQLite persistence
 * Automatic Control Plane reconnection
-
 
 * **Graceful shutdown**
 * **Health and readiness endpoints**
@@ -374,14 +369,14 @@ The current architecture uses:
 
 The Data Plane maintains its last-known configuration when the Control Plane becomes temporarily unavailable. It automatically reconnects using exponential backoff.
 
-> **Important Design Principle**
-> The Data Plane HTTP hot path does **not** access:
-> * SQLite
-> * Control Plane network calls
-> * Configuration storage
-> 
-> 
-> Runtime configuration is held in memory and updated atomically.
+ **Important Design Principle**
+ The Data Plane HTTP hot path does **not** access:
+
+* SQLite
+* Control Plane network calls
+* Configuration storage
+
+ Runtime configuration is held in memory and updated atomically.
 
 ---
 
@@ -428,7 +423,6 @@ Performance is a core engineering goal of Sentinel. The project uses:
 * Concurrency testing
 
 The philosophy is:
-
 
 $$\text{Measure} \longrightarrow \text{Profile} \longrightarrow \text{Identify Bottleneck} \longrightarrow \text{Optimize} \longrightarrow \text{Benchmark Again}$$
 
@@ -630,7 +624,6 @@ Sentinel is being built incrementally.
 
 The approach is:
 
-
 $$\text{Build} \longrightarrow \text{Test} \longrightarrow \text{Benchmark} \longrightarrow \text{Profile} \longrightarrow \text{Optimize} \longrightarrow \text{Scale}$$
 
 Distributed functionality is introduced only after the underlying Data Plane is understood and measurable.
@@ -828,4 +821,4 @@ The objective is to make Sentinel **correct first, measurable second, and faster
 
 ## License
 
-License information will be added as the project is finalized.
+Sentinel is licensed under the [MIT License](LICENSE).
